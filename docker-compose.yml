@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./ops/db/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgrest:
+    image: postgrest/postgrest:latest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://dev:devpass@db:5432/lims
+      PGRST_DB_SCHEMAS: "lims,public"
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
+      PGRST_OPENAPI_SERVER_PROXY_URI: "http://localhost:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+
+  postgraphile:
+    image: graphile/postgraphile:latest
+    restart: unless-stopped
+    command:
+      - "--connection"
+      - "postgres://dev:devpass@db:5432/lims"
+      - "--schema"
+      - "lims,public"
+      - "--port"
+      - "3001"
+      - "--watch"
+      - "--enhance-graphiql"
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+
+  dev:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu
+    
+    volumes:
+      - ./:/workspace
+    command: sleep infinity
+    depends_on:
+      - db
+      - postgrest
+      - postgraphile
+
+volumes:
+  pgdata:

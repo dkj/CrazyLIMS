@@ -1,0 +1,33 @@
+{
+  "name": "CrazyLIMS – Phase0",
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
+  },
+  "containerEnv": {
+    "COMPOSE_PROJECT_NAME": "CrazyLIMS"
+  },
+  "forwardPorts": [5432, 3000, 3001],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "zxh404.vscode-proto3"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "PGHOST": "db",
+    "PGPORT": "5432",
+    "PGUSER": "dev",
+    "PGPASSWORD": "devpass",
+    "PGDATABASE": "lims"
+  }
+  ,"postCreateCommand": "true || make db-wait && make migrate && make info"
+}
