@@ -32,7 +32,11 @@ CREATE TABLE lims.audit_log (
   diff         jsonb              -- optional: before/after
 );
 
-CREATE OR REPLACE FUNCTION lims.fn_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION lims.fn_audit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 DECLARE
   pk text;
 BEGIN
@@ -47,6 +51,9 @@ BEGIN
   RETURN COALESCE(NEW, OLD);
 END $$;
 
+ALTER FUNCTION lims.fn_audit() OWNER TO postgres;
+ALTER FUNCTION lims.fn_audit() SET search_path = pg_catalog, lims;
+
 CREATE TRIGGER trg_audit_users
 AFTER INSERT OR UPDATE OR DELETE ON lims.users
 FOR EACH ROW EXECUTE FUNCTION lims.fn_audit();
@@ -59,12 +66,17 @@ FOR EACH ROW EXECUTE FUNCTION lims.fn_audit();
 ALTER TABLE lims.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lims.samples ENABLE ROW LEVEL SECURITY;
 
--- For Phase0: allow read to anon, write to dev (you'll tighten later)
+-- For Phase0: allow read to anon, full access to dev (you'll tighten later)
 CREATE POLICY p_users_select ON lims.users FOR SELECT TO web_anon USING (true);
 CREATE POLICY p_samples_select ON lims.samples FOR SELECT TO web_anon USING (true);
 
+CREATE POLICY p_users_dev_all ON lims.users FOR ALL TO dev USING (true) WITH CHECK (true);
+CREATE POLICY p_samples_dev_all ON lims.samples FOR ALL TO dev USING (true) WITH CHECK (true);
+
 GRANT SELECT ON ALL TABLES IN SCHEMA lims TO web_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA lims TO dev;
+REVOKE ALL ON lims.audit_log FROM dev;
+GRANT SELECT ON lims.audit_log TO dev;
 
 -- Seed an admin user and a couple of samples
 INSERT INTO lims.users(email, full_name, role) VALUES

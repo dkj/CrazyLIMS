@@ -29,5 +29,5 @@
     "PGPASSWORD": "devpass",
     "PGDATABASE": "lims"
   }
-  ,"postCreateCommand": "true || make db-wait && make migrate && make info"
+  ,"postCreateCommand": "make db-wait && make migrate && make info"
 }
