@@ -74,9 +74,18 @@ CREATE POLICY p_users_dev_all ON lims.users FOR ALL TO dev USING (true) WITH CHE
 CREATE POLICY p_samples_dev_all ON lims.samples FOR ALL TO dev USING (true) WITH CHECK (true);
 
 GRANT SELECT ON ALL TABLES IN SCHEMA lims TO web_anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA lims TO app_auth;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA lims TO app_auth;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA lims TO dev;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA lims TO dev;
+
 REVOKE ALL ON lims.audit_log FROM dev;
 GRANT SELECT ON lims.audit_log TO dev;
+
+REVOKE ALL ON lims.audit_log FROM app_auth;
+GRANT SELECT ON lims.audit_log TO app_auth;
 
 -- Seed an admin user and a couple of samples
 INSERT INTO lims.users(email, full_name, role) VALUES

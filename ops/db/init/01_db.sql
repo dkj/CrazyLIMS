@@ -1,6 +1,7 @@
 -- Create database and grant to dev
 -- (Entry-point runs in 'postgres' DB already)
 CREATE DATABASE lims OWNER postgres;
+GRANT CONNECT ON DATABASE lims TO dev, postgrest_authenticator, postgraphile_authenticator;
 \connect lims;
 
 -- Basic extensions useful in Phase0

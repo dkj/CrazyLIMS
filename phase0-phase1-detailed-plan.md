@@ -52,7 +52,7 @@
 - Introduce supporting tables for `api_clients` or service accounts needed by instrumentation integrations.
 
 ### SQL Implementation Tasks
-- Update `ops/db/init/00_roles.sql` to create database roles (`app_admin`, `app_operator`, `app_researcher`, `app_external`, `app_automation`, `postgrest`, `postgraphile`) and grant least-privilege access to schemas.
+- Update `ops/db/init/00_roles.sql` to create database roles (`app_admin`, `app_operator`, `app_researcher`, `app_external`, `app_automation`) plus dedicated authenticator roles (`postgrest_authenticator`, `postgraphile_authenticator`) and grant least-privilege access to schemas.
 - In `ops/db/init/01_db.sql`, create schemas (`app_core`, `app_security`) and tables for users, projects, memberships, role templates, and audit logs (e.g., `app_security.audit_log` with JSONB payloads and timestamps).
 - Implement RLS policies on sensitive tables (`app_core.projects`, `app_core.project_memberships`, `app_security.api_tokens`) to enforce tenant and role filters.
 - Write reusable security helper functions (`current_tenant_id()`, `has_role(role_text)`) that rely on JWT claims or session variables.
