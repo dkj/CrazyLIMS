@@ -644,6 +644,7 @@ SELECT email, full_name, external_id, default_role, is_active
 FROM (
   VALUES
     ('admin@example.org', 'Admin User', 'urn:lims:user:admin', 'app_admin', true),
+    ('operator@example.org', 'Olivia Operator', 'urn:lims:user:operator', 'app_operator', true),
     ('alice@example.org', 'Alice Scientist', 'urn:lims:user:alice', 'app_researcher', true)
 ) AS seed(email, full_name, external_id, default_role, is_active)
 ON CONFLICT (email) DO UPDATE
@@ -657,6 +658,7 @@ FROM (
   VALUES
     ('admin@example.org', 'app_admin'),
     ('admin@example.org', 'app_operator'),
+    ('operator@example.org', 'app_operator'),
     ('alice@example.org', 'app_researcher')
 ) AS seed(email, role_name)
 JOIN lims.users u ON u.email = seed.email
@@ -691,7 +693,7 @@ WHERE NOT EXISTS (
 -- migrate:down
 DELETE FROM lims.samples WHERE name IN ('PBMC Batch 001', 'Serum Tube A');
 DELETE FROM lims.user_roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher');
-DELETE FROM lims.users WHERE email IN ('admin@example.org', 'alice@example.org');
+DELETE FROM lims.users WHERE email IN ('admin@example.org', 'operator@example.org', 'alice@example.org');
 DELETE FROM lims.roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher', 'app_external', 'app_automation');
 
 REVOKE SELECT ON lims.audit_log FROM app_operator;

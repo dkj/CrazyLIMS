@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev
 
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
@@ -8,6 +8,7 @@ DB_HOST_DISPLAY ?= localhost
 PSQL_CMD ?= docker compose exec -it db psql -U dev -d lims
 DB_WAIT_CMD ?= docker compose exec -T db pg_isready -U postgres -d postgres
 DBMATE ?= ./ops/db/bin/dbmate
+PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
 
 CONTRACTS_DIR ?= contracts
 POSTGREST_CONTRACT_DIR := $(CONTRACTS_DIR)/postgrest
@@ -18,6 +19,8 @@ INTROSPECTION_QUERY_FILE ?= ops/contracts/introspection.graphql
 INTROSPECTION_PAYLOAD := $(POSTGRAPHILE_CONTRACT_DIR)/.introspection-request.json
 POSTGREST_BASE_URL = http://$(POSTGREST_HOST):3000
 POSTGRAPHILE_GRAPHQL_URL = http://$(POSTGRAPHILE_HOST):3001/graphql
+JWT_DIR := ops/examples/jwts
+JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -91,6 +94,9 @@ ci:
 	docker compose stop postgrest postgraphile >/dev/null 2>&1 || true
 	$(MAKE) db/reset
 	$(MAKE) contracts/export
+
+jwt/dev:
+	PGRST_JWT_SECRET="$(PGRST_JWT_SECRET)" $(JWT_DEV_SCRIPT)
 
 rest:
 	@echo "GET /samples via PostgREST";
