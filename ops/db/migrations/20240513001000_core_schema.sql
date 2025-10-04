@@ -108,6 +108,7 @@ DECLARE
   claims jsonb := lims.current_claims();
   role_list text[] := ARRAY[]::text[];
   cfg text;
+  active_role text;
 BEGIN
   IF claims ? 'roles' THEN
     role_list := ARRAY(SELECT lower(value) FROM jsonb_array_elements_text(claims->'roles') AS value);
@@ -120,10 +121,15 @@ BEGIN
     role_list := role_list || string_to_array(lower(cfg), ',');
   END IF;
 
+  active_role := lower(current_setting('role', true));
+  IF active_role IS NULL OR active_role = '' OR active_role = 'none' THEN
+    active_role := lower(current_user::text);
+  END IF;
+
   RETURN role_list || ARRAY(
-    SELECT r.rolname
+    SELECT DISTINCT lower(r.rolname)
     FROM pg_roles r
-    WHERE pg_has_role(current_user, r.rolname, 'member')
+    WHERE pg_has_role(active_role, r.rolname, 'member')
       AND r.rolname LIKE 'app_%'
   );
 END;
@@ -143,7 +149,17 @@ DECLARE
   user_id uuid;
   cfg text;
 BEGIN
-  IF claims ? 'user_id' THEN
+  cfg := current_setting('lims.current_user_id', true);
+  IF cfg IS NOT NULL AND cfg <> '' THEN
+    BEGIN
+      user_id := cfg::uuid;
+    EXCEPTION
+      WHEN invalid_text_representation THEN
+        user_id := NULL;
+    END;
+  END IF;
+
+  IF user_id IS NULL AND claims ? 'user_id' THEN
     BEGIN
       user_id := (claims ->> 'user_id')::uuid;
     EXCEPTION
@@ -159,22 +175,10 @@ BEGIN
     LIMIT 1;
   END IF;
 
-  IF user_id IS NULL THEN
-    cfg := current_setting('lims.current_user_id', true);
-    IF cfg IS NOT NULL AND cfg <> '' THEN
-      BEGIN
-        user_id := cfg::uuid;
-      EXCEPTION
-        WHEN invalid_text_representation THEN
-          user_id := NULL;
-      END;
-    END IF;
-  END IF;
-
-  IF user_id IS NULL THEN
-    SELECT ur.user_id INTO user_id
-    FROM lims.user_roles ur
-    WHERE pg_has_role(current_user, ur.role_name, 'member')
+  IF user_id IS NULL AND claims ? 'email' THEN
+    SELECT u.id INTO user_id
+    FROM lims.users u
+    WHERE lower(u.email) = lower(claims->>'email')
     LIMIT 1;
   END IF;
 
@@ -257,21 +261,42 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, lims
 AS $$
 DECLARE
-  claims jsonb := COALESCE(jwt, lims.current_claims());
+  claims jsonb := COALESCE(jwt, '{}'::jsonb);
   roles_array text[] := ARRAY[]::text[];
   roles_csv text := '';
-  user_id uuid := lims.current_user_id();
+  user_id uuid;
+  role_text text;
 BEGIN
+  IF claims IS NULL OR claims::text = 'null' THEN
+    claims := '{}'::jsonb;
+  END IF;
+
   IF claims ? 'roles' THEN
     roles_array := ARRAY(SELECT lower(value) FROM jsonb_array_elements_text(claims->'roles') AS value);
-  ELSIF claims ? 'role' THEN
+  END IF;
+
+  IF array_length(roles_array, 1) IS NULL AND claims ? 'role' THEN
     roles_array := ARRAY[lower(claims->>'role')];
   END IF;
 
-  IF array_length(roles_array, 1) IS NULL THEN
-    roles_csv := '';
-  ELSE
+  IF array_length(roles_array, 1) IS NOT NULL THEN
     roles_csv := array_to_string(roles_array, ',');
+  END IF;
+
+  IF claims ? 'user_id' THEN
+    BEGIN
+      user_id := (claims ->> 'user_id')::uuid;
+    EXCEPTION
+      WHEN invalid_text_representation THEN
+        user_id := NULL;
+    END;
+  END IF;
+
+  IF user_id IS NULL AND claims ? 'sub' THEN
+    SELECT u.id INTO user_id
+    FROM lims.users u
+    WHERE u.external_id = claims->>'sub'
+    LIMIT 1;
   END IF;
 
   IF user_id IS NOT NULL THEN
@@ -281,6 +306,13 @@ BEGIN
   END IF;
 
   PERFORM set_config('lims.current_roles', roles_csv, true);
+
+  IF array_length(roles_array, 1) IS NOT NULL THEN
+    role_text := roles_array[1];
+    IF role_text IS NOT NULL AND role_text <> '' THEN
+      PERFORM set_config('role', role_text, true);
+    END IF;
+  END IF;
 END;
 $$;
 

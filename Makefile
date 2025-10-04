@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security
 
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
@@ -21,6 +21,7 @@ POSTGREST_BASE_URL = http://$(POSTGREST_HOST):3000
 POSTGRAPHILE_GRAPHQL_URL = http://$(POSTGRAPHILE_HOST):3001/graphql
 JWT_DIR := ops/examples/jwts
 JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
+RBAC_TEST_SCRIPT := scripts/test_rbac.sh
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -94,9 +95,15 @@ ci:
 	docker compose stop postgrest postgraphile >/dev/null 2>&1 || true
 	$(MAKE) db/reset
 	$(MAKE) contracts/export
+	$(MAKE) test/security
 
 jwt/dev:
 	PGRST_JWT_SECRET="$(PGRST_JWT_SECRET)" $(JWT_DEV_SCRIPT)
+
+test/security:
+	docker compose up -d db postgrest postgraphile >/dev/null
+	$(MAKE) jwt/dev >/dev/null
+	POSTGREST_URL=$(POSTGREST_BASE_URL) POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL) $(RBAC_TEST_SCRIPT)
 
 rest:
 	@echo "GET /samples via PostgREST";

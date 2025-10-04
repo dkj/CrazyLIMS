@@ -31,17 +31,17 @@ emit_token() {
 }
 
 admin_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:admin","preferred_username":"admin","email":"admin@example.org","roles":["app_admin","app_operator"],"exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:admin","preferred_username":"admin","email":"admin@example.org","roles":["app_admin","app_operator"],"role":"app_admin","exp":${EXP},"iat":1700000000}
 JSON
 )
 
 operator_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:operator","preferred_username":"operator","email":"operator@example.org","roles":["app_operator"],"exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:operator","preferred_username":"operator","email":"operator@example.org","roles":["app_operator"],"role":"app_operator","exp":${EXP},"iat":1700000000}
 JSON
 )
 
 researcher_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:alice","preferred_username":"alice","email":"alice@example.org","roles":["app_researcher"],"exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:alice","preferred_username":"alice","email":"alice@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
 JSON
 )
 

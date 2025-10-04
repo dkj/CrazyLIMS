@@ -45,7 +45,7 @@ PostgREST executes `lims.pre_request` before each request. The function inspects
 
 PostGraphile now runs through `ops/postgraphile/server.js`, which:
 
-1. Verifies incoming JWTs using the shared secret in `POSTGRAPHILE_JWT_SECRET`.
+1. Verifies incoming JWTs with `jsonwebtoken` using the shared secret in `POSTGRAPHILE_JWT_SECRET` (and optional audience/issuer checks).
 2. Injects `request.jwt.claims`, `lims.current_roles`, and the active `role` into `pgSettings` so that every resolver query sees the same context as PostgREST.
 
 This keeps both API surfaces aligned and allows the database helper functions / RLS policies to behave identically regardless of entry point.
@@ -71,6 +71,11 @@ Sample JWTs and helper scripts live under `ops/examples/jwts`:
 - Run `make jwt/dev` after tweaking claims or secrets to refresh all fixtures.
 
 Use these files with PostgREST (`curl -H "Authorization: Bearer $(cat admin.jwt)" ...`) or GraphiQL to test RLS paths quickly.
+
+## Verification
+
+- `make test/security` spins up the API containers, regenerates the dev JWT fixtures, and runs smoke tests (`scripts/test_rbac.sh`) that exercise representative REST and GraphQL requests for administrator, operator, and researcher personas.
+- The script confirms that privileged roles can read/write appropriately while lower-privilege personas are restricted to their own scope or denied mutations (including GraphQL mutations blocked for researchers).
 
 ## Operational Checklist
 

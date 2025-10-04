@@ -1,5 +1,6 @@
 const express = require("express");
 const { postgraphile } = require("postgraphile");
+const jwt = require("jsonwebtoken");
 
 const connectionString =
   process.env.POSTGRAPHILE_DB_URI ||
@@ -12,8 +13,9 @@ const schemaList = (process.env.POSTGRAPHILE_SCHEMAS || "lims,public")
   .filter(Boolean);
 
 const fallbackRole = process.env.POSTGRAPHILE_DEFAULT_ROLE || "web_anon";
-const jwtSecret = process.env.POSTGRAPHILE_JWT_SECRET || process.env.PGRST_JWT_SECRET;
+const jwtSecret = process.env.POSTGRAPHILE_JWT_SECRET || process.env.PGRST_JWT_SECRET || null;
 const jwtAudience = process.env.POSTGRAPHILE_JWT_AUD || undefined;
+const jwtIssuer = process.env.POSTGRAPHILE_JWT_ISS || undefined;
 const enableWatch =
   (process.env.POSTGRAPHILE_WATCH || "true").toLowerCase() !== "false";
 const port = Number(process.env.POSTGRAPHILE_PORT || 3001);
@@ -31,14 +33,44 @@ function normalizeRoles(claims) {
   return [];
 }
 
+app.use((req, res, next) => {
+  if (!jwtSecret) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (!authHeader) {
+    return next();
+  }
+
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") {
+    return res.status(401).json({ errors: [{ message: "Invalid authorization header" }] });
+  }
+
+  const token = parts[1];
+  try {
+    const verifyOptions = {};
+    if (jwtAudience) {
+      verifyOptions.audience = jwtAudience;
+    }
+    if (jwtIssuer) {
+      verifyOptions.issuer = jwtIssuer;
+    }
+    req.jwtClaims = jwt.verify(token, jwtSecret, verifyOptions);
+  } catch (error) {
+    return res.status(401).json({ errors: [{ message: "Invalid JWT" }] });
+  }
+
+  return next();
+});
+
 app.use(
   postgraphile(connectionString, schemaList, {
     watchPg: enableWatch,
     graphiql: true,
     enhanceGraphiql: true,
     dynamicJson: true,
-    jwtSecret,
-    jwtVerifyAudience: jwtAudience,
     pgSettings: async (req) => {
       const settings = {
         role: fallbackRole,
