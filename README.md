@@ -34,6 +34,7 @@ The `dev` service defined in `docker-compose.yml` is used by the devcontainer; w
 | `make contracts/export` | Regenerate OpenAPI (PostgREST) and GraphQL schema snapshots. |
 | `make test/security` | Execute REST and GraphQL RBAC smoke tests using fixture JWTs. |
 | `make ci` | Orchestrates reset → db tests → contract export → RBAC smoke tests. |
+| `make ui/dev` | Launch the read-only React console (served on http://localhost:5173). |
 
 See `Makefile` for additional helper targets (logs, psql shell, etc.).
 
@@ -61,6 +62,20 @@ Development JWTs live under `ops/examples/jwts`:
   AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
   curl -H "$AUTH" http://localhost:3000/users
   ```
+
+Running `make jwt/dev` also copies the generated fixtures into `ui/public/tokens`, allowing the web console persona selector to serve them directly.
+
+## Web Console (Phase 2 Prototype)
+
+- Start via `make ui/dev` or `docker compose up ui`.
+- Visit http://localhost:5173 and choose a persona; the console issues queries against PostgREST using the selected token.
+- Current views display:
+  - Sample overview (`/v_sample_overview`)
+  - Labware contents (`/v_labware_contents`)
+  - Inventory status (`/v_inventory_status`)
+- As RBAC applies, switching personas immediately changes the dataset (e.g., researchers see only their permitted samples).
+- Modify components under `ui/src` to iterate on additional visualizations or workflows.
+- API calls are routed through the Vite dev-server proxy at `/api`, so the browser never needs to resolve the `postgrest` container hostname. Override the proxy target with `VITE_POSTGREST_SERVER_TARGET` (and optionally the public base with `VITE_POSTGREST_BROWSER_BASE`) when running PostgREST on a different address.
 
 PostgREST automatically calls `lims.pre_request` to translate JWT claims into session settings consumed by RLS policies. PostGraphile requests go through the custom wrapper in `ops/postgraphile/server.js`, which validates JWTs via `jsonwebtoken` and forwards the same claim context.
 

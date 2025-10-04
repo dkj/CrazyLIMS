@@ -23,6 +23,7 @@ POSTGRAPHILE_GRAPHQL_URL = http://$(POSTGRAPHILE_HOST):3001/graphql
 JWT_DIR := ops/examples/jwts
 JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
 RBAC_TEST_SCRIPT := scripts/test_rbac.sh
+JWT_PUBLIC_DIR := ui/public/tokens
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -101,6 +102,14 @@ ci:
 
 jwt/dev:
 	PGRST_JWT_SECRET="$(PGRST_JWT_SECRET)" $(JWT_DEV_SCRIPT)
+	@if [ -d "$(JWT_PUBLIC_DIR)" ]; then \
+		mkdir -p $(JWT_PUBLIC_DIR); \
+		cp $(JWT_DIR)/*.jwt $(JWT_PUBLIC_DIR)/; \
+		echo "Copied JWT fixtures into $(JWT_PUBLIC_DIR)"; \
+	fi
+
+ui/dev:
+	docker compose up ui
 
 test/security:
 	docker compose up -d db postgrest postgraphile >/dev/null

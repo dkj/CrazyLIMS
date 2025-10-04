@@ -8,7 +8,8 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
   },
   "containerEnv": {
-    "COMPOSE_PROJECT_NAME": "crazylims"
+    "COMPOSE_PROJECT_NAME": "crazylims",
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
   },
   "forwardPorts": [5432, 3000, 3001],
   "customizations": {
