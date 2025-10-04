@@ -1,0 +1,12 @@
+{
+  "name": "lims-postgraphile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PostGraphile wrapper adding JWT-aware pgSettings",
+  "main": "server.js",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.19.2",
+    "postgraphile": "^4.13.0"
+  }
+}

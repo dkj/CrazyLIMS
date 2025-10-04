@@ -33,23 +33,20 @@ services:
       - "3000:3000"
 
   postgraphile:
-    image: graphile/postgraphile:latest
+    build:
+      context: ./ops/postgraphile
     restart: unless-stopped
-    command:
-      - "--connection"
-      - "postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims"
-      - "--schema"
-      - "lims,public"
-      - "--port"
-      - "3001"
-      - "--watch"
-      - "--enhance-graphiql"
-      - "--default-role"
-      - "web_anon"
     depends_on:
       - db
     ports:
       - "3001:3001"
+    environment:
+      POSTGRAPHILE_DB_URI: postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims
+      POSTGRAPHILE_SCHEMAS: "lims,public"
+      POSTGRAPHILE_DEFAULT_ROLE: web_anon
+      POSTGRAPHILE_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
+      POSTGRAPHILE_JWT_AUD: "lims-dev"
+      POSTGRAPHILE_PORT: "3001"
 
   dev:
     image: mcr.microsoft.com/devcontainers/base:ubuntu
