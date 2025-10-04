@@ -51,6 +51,50 @@ SET ROLE app_admin;
 SELECT set_config('session.researcher_id', (SELECT id::text FROM lims.users WHERE email = 'alice@example.org'), false);
 RESET ROLE;
 
+-- Labware and storage setup
+SET ROLE app_admin;
+DO $$
+DECLARE
+  facility_id_var uuid;
+  unit_id_var uuid;
+  sublocation_id_var uuid;
+  labware_id uuid;
+  sample_id uuid;
+BEGIN
+  SELECT id INTO facility_id_var FROM lims.storage_facilities WHERE name = 'Main Lab';
+  IF facility_id_var IS NULL THEN
+    INSERT INTO lims.storage_facilities(name) VALUES ('Test Facility') RETURNING id INTO facility_id_var;
+  END IF;
+
+  INSERT INTO lims.storage_units(facility_id, name, storage_type)
+  VALUES (facility_id_var, 'Test Freezer', 'freezer')
+  ON CONFLICT (facility_id, name) DO NOTHING;
+
+  SELECT id INTO unit_id_var FROM lims.storage_units WHERE facility_id = facility_id_var AND name = 'Test Freezer';
+
+  INSERT INTO lims.storage_sublocations(unit_id, name, capacity)
+  VALUES (unit_id_var, 'Rack A', 20)
+  ON CONFLICT (unit_id, name) DO NOTHING;
+
+  SELECT id INTO sublocation_id_var FROM lims.storage_sublocations WHERE unit_id = unit_id_var AND name = 'Rack A';
+
+  INSERT INTO lims.labware(labware_type_id, barcode, current_storage_sublocation_id, created_by)
+  VALUES ((SELECT id FROM lims.labware_types WHERE name = '2mL Tube' LIMIT 1), 'TEST-LABWARE-001', sublocation_id_var, (SELECT id FROM lims.users WHERE email = 'admin@example.org'))
+  ON CONFLICT (barcode) DO NOTHING;
+
+  SELECT id INTO labware_id FROM lims.labware WHERE barcode = 'TEST-LABWARE-001';
+  SELECT id INTO sample_id FROM lims.samples WHERE name = 'PBMC Batch 001';
+
+  INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, assigned_by)
+  VALUES (sample_id, labware_id, (SELECT id FROM lims.users WHERE email = 'admin@example.org'))
+  ON CONFLICT DO NOTHING;
+
+  UPDATE lims.samples SET current_labware_id = labware_id WHERE id = sample_id;
+END;
+$$;
+
+RESET ROLE;
+
 -- Researcher should only see their own record via RLS (simulating PostgREST session)
 SET ROLE app_auth;
 SELECT set_config('role', 'app_researcher', false);
@@ -79,6 +123,19 @@ BEGIN
     WHEN insufficient_privilege THEN
       NULL;
   END;
+
+  BEGIN
+    UPDATE lims.labware SET display_name = 'Should fail' WHERE barcode = 'TEST-LABWARE-001';
+    RAISE EXCEPTION 'Researcher should not update labware';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
+
+  SELECT count(*) INTO total_users FROM lims.v_sample_overview WHERE current_labware_barcode = 'TEST-LABWARE-001';
+  IF total_users <> 1 THEN
+    RAISE EXCEPTION 'Researcher should see sample overview for their accessible sample';
+  END IF;
 END;
 $$;
 
@@ -88,4 +145,7 @@ RESET ROLE;
 SET ROLE app_admin;
 DELETE FROM lims.api_tokens WHERE api_client_id IN (SELECT id FROM lims.api_clients WHERE client_identifier = 'test-client');
 DELETE FROM lims.api_clients WHERE client_identifier = 'test-client';
+UPDATE lims.samples SET current_labware_id = NULL WHERE current_labware_id IN (SELECT id FROM lims.labware WHERE barcode = 'TEST-LABWARE-001');
+DELETE FROM lims.sample_labware_assignments WHERE labware_id IN (SELECT id FROM lims.labware WHERE barcode = 'TEST-LABWARE-001');
+DELETE FROM lims.labware WHERE barcode = 'TEST-LABWARE-001';
 RESET ROLE;

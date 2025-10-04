@@ -42,7 +42,10 @@ See `Makefile` for additional helper targets (logs, psql shell, etc.).
 Schemas/tables created so far include:
 
 - `lims.roles`, `lims.users`, `lims.user_roles`
-- `lims.samples`, `lims.audit_log`
+- `lims.samples`, `lims.sample_derivations`, `lims.custody_events`, `lims.sample_labware_assignments`, `lims.audit_log`
+- `lims.labware`, `lims.labware_positions`, `lims.labware_location_history`
+- `lims.storage_facilities`, `lims.storage_units`, `lims.storage_sublocations`
+- `lims.inventory_items`, `lims.inventory_transactions`
 - `lims.api_clients`, `lims.api_tokens`
 
 Helper functions such as `lims.current_roles()`, `lims.current_user_id()`, `lims.pre_request()`, and `lims.create_api_token()` power RLS and API token workflows.
