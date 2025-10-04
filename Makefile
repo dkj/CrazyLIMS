@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait migrate info psql rest gql seed
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql
 
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
 DB_HOST_DISPLAY ?= localhost
 PSQL_CMD ?= docker compose exec -it db psql -U dev -d lims
 DB_WAIT_CMD ?= docker compose exec -T db pg_isready -U postgres -d postgres
+DBMATE ?= ./ops/db/bin/dbmate
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -29,9 +30,35 @@ logs:
 db-wait:
 	@bash -lc 'until $(DB_WAIT_CMD); do sleep 1; done'
 
-migrate:
-	# entrypoint scripts already ran; but use this for subsequent sql in ops/db/migrations if you add them
-	@echo "✔ Phase0 init complete (entrypoint init scripts)."
+db/create:
+	$(DBMATE) create
+
+db/drop:
+	$(DBMATE) drop
+
+db/migrate:
+	$(DBMATE) migrate
+
+db/rollback:
+	$(DBMATE) rollback
+
+db/status:
+	$(DBMATE) status
+
+db/dump:
+	$(DBMATE) dump
+
+db/new:
+	@test -n "$(name)" || (echo "usage: make db/new name=add_table" >&2; exit 1)
+	$(DBMATE) new "$(name)"
+
+db/reset: db/drop db/create db/migrate
+
+db/redo:
+	$(DBMATE) rollback
+	$(DBMATE) migrate
+
+migrate: db/migrate
 
 info:
 	@echo "Postgres:    $(DB_HOST_DISPLAY):5432  db=lims  user=dev  pass=devpass"

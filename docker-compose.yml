@@ -5,8 +5,8 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lims
     volumes:
-      - ./ops/db/init:/docker-entrypoint-initdb.d:ro
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
@@ -52,7 +52,7 @@ services:
 
   dev:
     image: mcr.microsoft.com/devcontainers/base:ubuntu
-    
+
     volumes:
       - ./:/workspace
     command: sleep infinity
@@ -60,6 +60,20 @@ services:
       - db
       - postgrest
       - postgraphile
+
+  dbmate:
+    image: amacneil/dbmate:2.13
+    entrypoint: ["dbmate"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/lims?sslmode=disable
+      DBMATE_MIGRATIONS_DIR: /db/migrations
+      DBMATE_SCHEMA_FILE: /db/schema.sql
+    volumes:
+      - ./ops/db:/db
+    working_dir: /db
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:

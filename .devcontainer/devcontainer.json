@@ -8,7 +8,7 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
   },
   "containerEnv": {
-    "COMPOSE_PROJECT_NAME": "CrazyLIMS"
+    "COMPOSE_PROJECT_NAME": "crazylims"
   },
   "forwardPorts": [5432, 3000, 3001],
   "customizations": {
@@ -29,5 +29,5 @@
     "PGPASSWORD": "devpass",
     "PGDATABASE": "lims"
   }
-  ,"postCreateCommand": "make db-wait && make migrate && make info"
+  ,"postCreateCommand": "make db-wait && make db/migrate && make info"
 }

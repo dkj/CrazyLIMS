@@ -16,11 +16,11 @@
 - Document developer routines in `README` or `TECH_SETUP.md`: start/stop commands, default credentials, and how to access PostgREST/PostGraphile endpoints from host.
 
 ### Migration Tooling and Seed Runners
-- Choose migration orchestrator (e.g., `sqitch`, `dbmate`, or `psql` wrapper scripts) and codify in the `Makefile` (e.g., `make db/migrate`, `make db/reset`).
-- Normalize existing SQL files in `ops/db/init` to follow a versioned naming convention; isolate role creation in `00_roles.sql`, schema creation in `01_db.sql`, and seed data in `02_schema_seed.sql`.
-- Author bootstrap script that applies migrations inside the `postgres` container on startup (entrypoint script or `docker-compose` healthcheck sequence).
-- Add idempotent seed routine for Dev/Test to populate reference data (units, vocabularies) while keeping Production seed optional via environment flag.
-- Verify migrations run cleanly from both host (`psql` + make target) and inside devcontainer shell.
+- Standardize on `dbmate` for migrations and wire helper targets in the `Makefile` (`make db/migrate`, `make db/reset`, `make db/new name=...`).
+- Convert the former `ops/db/init` SQL into timestamped `dbmate` migrations under `ops/db/migrations` so roles, schema, and seed data are versioned.
+- Route migration execution through `ops/db/bin/dbmate` so Docker-backed environments reuse the same workflow; trigger `make db/migrate` once the database is healthy.
+- Add idempotent seed routines for Dev/Test as additional migrations while keeping Production seed optional via environment flag.
+- Verify migrations run cleanly from both host (`make db/migrate`) and inside devcontainer shell.
 
 ### API Contract Generation
 - Configure PostgREST to emit OpenAPI by enabling the built-in `/` metadata endpoint and scripting `curl` + `jq` to export JSON into `contracts/openapi.json`.
@@ -51,9 +51,8 @@
 - Model user identities with support for SSO/JWT subject mapping; include linkage tables for project memberships and role assignments.
 - Introduce supporting tables for `api_clients` or service accounts needed by instrumentation integrations.
 
-### SQL Implementation Tasks
-- Update `ops/db/init/00_roles.sql` to create database roles (`app_admin`, `app_operator`, `app_researcher`, `app_external`, `app_automation`) plus dedicated authenticator roles (`postgrest_authenticator`, `postgraphile_authenticator`) and grant least-privilege access to schemas.
-- In `ops/db/init/01_db.sql`, create schemas (`app_core`, `app_security`) and tables for users, projects, memberships, role templates, and audit logs (e.g., `app_security.audit_log` with JSONB payloads and timestamps).
+- Update the bootstrap roles migration (e.g., `ops/db/migrations/20240513000000_bootstrap_roles.sql`) to create database roles (`app_admin`, `app_operator`, `app_researcher`, `app_external`, `app_automation`) plus dedicated authenticator roles (`postgrest_authenticator`, `postgraphile_authenticator`) and grant least-privilege access to schemas.
+- In the core schema migration (e.g., `ops/db/migrations/20240513001000_core_schema.sql`), create schemas (`app_core`, `app_security`) and tables for users, projects, memberships, role templates, and audit logs (e.g., `app_security.audit_log` with JSONB payloads and timestamps).
 - Implement RLS policies on sensitive tables (`app_core.projects`, `app_core.project_memberships`, `app_security.api_tokens`) to enforce tenant and role filters.
 - Write reusable security helper functions (`current_tenant_id()`, `has_role(role_text)`) that rely on JWT claims or session variables.
 - Add immutable audit triggers using `pgcrypto` UUIDs and `clock_timestamp()` to record inserts/updates/deletes across core tables, writing into a normalized audit log.
@@ -63,8 +62,7 @@
 - Implement `set_config` hooks in a Postgres function executed by PostgREST/PostGraphile to translate JWT claims into `current_setting` values for use in RLS policies.
 - Create sample JWT fixtures for development/testing and store them under `ops/examples/jwts/` for quick smoke testing with PostgREST.
 
-### Seed and Validation Data
-- Extend `ops/db/init/02_schema_seed.sql` (or create `ops/db/init/03_security_seed.sql`) to insert baseline roles, lab personas, demo tenants/projects, and admin accounts with hashed passwords or external IDs.
+- Extend the seed migration (or add new ones) to insert baseline roles, lab personas, demo tenants/projects, and admin accounts with hashed passwords or external IDs.
 - Provide test data sets enabling Phase 2 to reference projects and users without manual setup.
 
 ### Testing & Verification
