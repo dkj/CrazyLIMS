@@ -30,9 +30,9 @@ request_postgrest() {
 
   token="$(<"${JWT_DIR}/${token_file}")"
   if [[ -n "${body}" ]]; then
-    body_json="$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -X "${method}" "${POSTGREST_URL}${path}" -d "${body}" || true)"
+    body_json="$(curl -sS --retry 12 --retry-delay 1 --retry-all-errors -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -X "${method}" "${POSTGREST_URL}${path}" -d "${body}" || true)"
   else
-    body_json="$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -X "${method}" "${POSTGREST_URL}${path}" || true)"
+    body_json="$(curl -sS --retry 12 --retry-delay 1 --retry-all-errors -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -X "${method}" "${POSTGREST_URL}${path}" || true)"
   fi
   status="${body_json##*$'\n'}"
   body_json="${body_json%$'\n'*}"
@@ -57,7 +57,7 @@ request_graphql() {
   local token response status body_json
 
   token="$(<"${JWT_DIR}/${token_file}")"
-  response="$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" "${POSTGRAPHILE_URL}" -d "${query}" || true)"
+  response="$(curl -sS --retry 12 --retry-delay 1 --retry-all-errors -w '\n%{http_code}' -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" "${POSTGRAPHILE_URL}" -d "${query}" || true)"
   status="${response##*$'\n'}"
   body_json="${response%$'\n'*}"
 

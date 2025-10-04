@@ -136,6 +136,57 @@
         ]
       }
     },
+    "/rpc/create_api_token": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_api_client_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_expires_at": {
+                  "format": "timestamp with time zone",
+                  "type": "string"
+                },
+                "p_metadata": {
+                  "format": "jsonb"
+                },
+                "p_plain_token": {
+                  "format": "text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_api_client_id",
+                "p_plain_token"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) create_api_token"
+        ]
+      }
+    },
     "/rpc/pre_request": {
       "post": {
         "parameters": [

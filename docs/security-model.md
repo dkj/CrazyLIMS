@@ -14,11 +14,13 @@ All authenticated personas inherit from the umbrella `app_auth` role, which carr
 
 ## Core Tables
 
-Phase 1 introduces three security-centric tables under `lims`:
+Phase 1 introduces the following security-centric tables under `lims`:
 
 - `lims.roles` – catalog of assignable persona roles (seeded with the table above).
 - `lims.users` – canonical user identities keyed by UUID with optional `external_id` for SSO mapping.
 - `lims.user_roles` – membership bridge (many-to-many) capturing who granted which role and when.
+- `lims.api_clients` – registered service accounts with allowed roles and metadata.
+- `lims.api_tokens` – hashed API credentials linked to clients, with revocation metadata and usage tracking.
 
 Downstream tables (currently `lims.samples`) reference `lims.users` via `created_by`, enabling RLS and audit hooks to attribute changes to actors.
 
@@ -72,10 +74,19 @@ Sample JWTs and helper scripts live under `ops/examples/jwts`:
 
 Use these files with PostgREST (`curl -H "Authorization: Bearer $(cat admin.jwt)" ...`) or GraphiQL to test RLS paths quickly.
 
+## Service Accounts & Token Lifecycle
+
+- Service accounts live in `lims.api_clients` with metadata such as `allowed_roles`, contact email, and auditing columns.
+- Token digests are stored in `lims.api_tokens`; plaintext secrets are never persisted. A six-character `token_hint` (trailing characters of the plaintext) helps operators identify which credential a user is referencing.
+- Administrators generate new credentials by calling `lims.create_api_token(api_client_id, plain_token, expires_at, metadata)` while logged in with sufficient privileges. The function enforces minimum length and records `created_by`.
+- Tokens can be revoked by setting `revoked_at`/`revoked_by` or deleting the row. Active counts and last use timestamps are exposed through `lims.v_api_client_overview`.
+- Downstream integration layers should exchange the token for a JWT (future phase) or validate against the stored digest before mapping to an allowed role.
+
 ## Verification
 
 - `make test/security` spins up the API containers, regenerates the dev JWT fixtures, and runs smoke tests (`scripts/test_rbac.sh`) that exercise representative REST and GraphQL requests for administrator, operator, and researcher personas.
-- The script confirms that privileged roles can read/write appropriately while lower-privilege personas are restricted to their own scope or denied mutations (including GraphQL mutations blocked for researchers).
+- The script confirms that privileged roles can read/write appropriately while lower-privilege personas are restricted to their own scope or denied mutations (including GraphQL mutations blocked for researchers and REST access limited to their own user record).
+- `make db/test` runs SQL-level checks (`ops/db/tests/security.sql`) to validate token hashing, RLS behaviour, and researcher visibility rules directly inside the database.
 
 ## Operational Checklist
 

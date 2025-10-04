@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security db/test
 
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
@@ -9,6 +9,7 @@ PSQL_CMD ?= docker compose exec -it db psql -U dev -d lims
 DB_WAIT_CMD ?= docker compose exec -T db pg_isready -U postgres -d postgres
 DBMATE ?= ./ops/db/bin/dbmate
 PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
+PSQL_BATCH ?= docker compose exec -T db psql -U dev -d lims
 
 CONTRACTS_DIR ?= contracts
 POSTGREST_CONTRACT_DIR := $(CONTRACTS_DIR)/postgrest
@@ -94,6 +95,7 @@ contracts/export:
 ci:
 	docker compose stop postgrest postgraphile >/dev/null 2>&1 || true
 	$(MAKE) db/reset
+	$(MAKE) db/test
 	$(MAKE) contracts/export
 	$(MAKE) test/security
 
@@ -102,8 +104,12 @@ jwt/dev:
 
 test/security:
 	docker compose up -d db postgrest postgraphile >/dev/null
+	$(MAKE) db-wait >/dev/null
 	$(MAKE) jwt/dev >/dev/null
 	POSTGREST_URL=$(POSTGREST_BASE_URL) POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL) $(RBAC_TEST_SCRIPT)
+
+db/test:
+	cat ops/db/tests/security.sql | $(PSQL_BATCH)
 
 rest:
 	@echo "GET /samples via PostgREST";
