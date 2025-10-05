@@ -19,8 +19,7 @@ Phase 1 introduces the following security-centric tables under `lims`:
 - `lims.roles` – catalog of assignable persona roles (seeded with the table above).
 - `lims.users` – canonical user identities keyed by UUID with optional `external_id` for SSO mapping.
 - `lims.user_roles` – membership bridge (many-to-many) capturing who granted which role and when.
-- `lims.api_clients` – registered service accounts with allowed roles and metadata.
-- `lims.api_tokens` – hashed API credentials linked to clients, with revocation metadata and usage tracking.
+- `lims.user_tokens` – hashed API credentials linked directly to users (human or service accounts) with revocation metadata and usage tracking.
 
 Downstream tables (currently `lims.samples`) reference `lims.users` via `created_by`, enabling RLS and audit hooks to attribute changes to actors.
 
@@ -85,10 +84,10 @@ Use these files with PostgREST (`curl -H "Authorization: Bearer $(cat admin.jwt)
 
 ## Service Accounts & Token Lifecycle
 
-- Service accounts live in `lims.api_clients` with metadata such as `allowed_roles`, contact email, and auditing columns.
-- Token digests are stored in `lims.api_tokens`; plaintext secrets are never persisted. A six-character `token_hint` (trailing characters of the plaintext) helps operators identify which credential a user is referencing.
-- Administrators generate new credentials by calling `lims.create_api_token(api_client_id, plain_token, expires_at, metadata)` while logged in with sufficient privileges. The function enforces minimum length and records `created_by`.
-- Tokens can be revoked by setting `revoked_at`/`revoked_by` or deleting the row. Active counts and last use timestamps are exposed through `lims.v_api_client_overview`.
+- Service accounts are standard `lims.users` records marked with `is_service_account = true`. They receive the same role assignments as other users via `lims.user_roles`.
+- Token digests live in `lims.user_tokens`; plaintext secrets are never persisted. A six-character `token_hint` (trailing characters of the plaintext) helps operators identify which credential a user is referencing. Administrators can inspect all tokens, while individual users may read their own entries thanks to row-level policies.
+- Administrators generate new credentials by calling `lims.create_api_token(user_id, plain_token, allowed_roles, expires_at, metadata)` while logged in with sufficient privileges. The function enforces minimum length, records `created_by`, and defaults the token’s allowed roles to the user’s current assignments when not explicitly provided.
+- Tokens can be revoked by setting `revoked_at`/`revoked_by` or deleting the row. Active counts and last use timestamps are exposed through `lims.v_api_token_overview`.
 - Downstream integration layers should exchange the token for a JWT (future phase) or validate against the stored digest before mapping to an allowed role.
 
 ## Verification

@@ -49,11 +49,11 @@
 - Conduct role matrix workshop with stakeholders to map permissions for researchers, operations staff, lab managers, automation actors, and external collaborators.
 - Define tenancy boundaries (single organization with projects vs multi-tenant) and capture in a `tenants` or `projects` table with status, ownership, and SLA metadata fields.
 - Model user identities with support for SSO/JWT subject mapping; include linkage tables for project memberships and role assignments.
-- Introduce supporting tables for `api_clients` or service accounts needed by instrumentation integrations.
+- Introduce supporting tables for service accounts (flagged users with tokens) needed by instrumentation integrations.
 
 - Update the bootstrap roles migration (e.g., `ops/db/migrations/20240513000000_bootstrap_roles.sql`) to create database roles (`app_admin`, `app_operator`, `app_researcher`, `app_external`, `app_automation`) plus dedicated authenticator roles (`postgrest_authenticator`, `postgraphile_authenticator`) and grant least-privilege access to schemas.
 - In the core schema migration (e.g., `ops/db/migrations/20240513001000_core_schema.sql`), create schemas (`app_core`, `app_security`) and tables for users, projects, memberships, role templates, and audit logs (e.g., `app_security.audit_log` with JSONB payloads and timestamps).
-- Implement RLS policies on sensitive tables (`app_core.projects`, `app_core.project_memberships`, `app_security.api_tokens`) to enforce tenant and role filters.
+- Implement RLS policies on sensitive tables (`app_core.projects`, `app_core.project_memberships`, `app_security.user_tokens`) to enforce tenant and role filters.
 - Write reusable security helper functions (`current_tenant_id()`, `has_role(role_text)`) that rely on JWT claims or session variables.
 - Add immutable audit triggers using `pgcrypto` UUIDs and `clock_timestamp()` to record inserts/updates/deletes across core tables, writing into a normalized audit log.
 

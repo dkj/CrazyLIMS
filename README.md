@@ -54,7 +54,7 @@ Schemas/tables created so far include:
 - `lims.labware`, `lims.labware_positions`, `lims.labware_location_history`
 - `lims.storage_facilities`, `lims.storage_units`, `lims.storage_sublocations`
 - `lims.inventory_items`, `lims.inventory_transactions`
-- `lims.api_clients`, `lims.api_tokens`
+- `lims.projects`, `lims.project_members`, `lims.user_tokens`
 
 Helper functions such as `lims.current_roles()`, `lims.current_user_id()`, `lims.pre_request()`, and `lims.create_api_token()` power RLS and API token workflows.
 
@@ -91,7 +91,7 @@ PostgREST automatically calls `lims.pre_request` to translate JWT claims into se
 
 ## Service Accounts & API Tokens
 
-Service accounts are represented by `lims.api_clients` rows with allowed roles. Tokens are hashed (`sha256`) and stored in `lims.api_tokens`. Use the `lims.create_api_token(api_client_id, plain_token, expires_at, metadata)` function to register a new token (the plaintext should be provided to the caller once and handled outside the database).
+Service accounts are regular `lims.users` rows flagged with `is_service_account = true` (for example, `INSERT INTO lims.users (..., is_service_account) VALUES (.., true)`). Grant the desired roles via `lims.user_roles`, then call `lims.create_api_token(user_id, plain_token, allowed_roles, expires_at, metadata)` to mint a hashed token stored in `lims.user_tokens` (the plaintext should be provided to the caller once and discarded).
 
 Recommended workflow:
 
@@ -99,7 +99,7 @@ Recommended workflow:
 2. Insert/update the API client metadata (`client_identifier`, allowed roles, contact email).
 3. Call `lims.create_api_token` with a randomly generated secret (>=32 characters). The function stores the digest and a 6-character hint for debugging.
 4. Return the plaintext token to the caller and discard it locally.
-5. Use `lims.v_api_client_overview` for active token counts and last usage; revoke tokens by updating `revoked_at`/`revoked_by` or deleting the row.
+5. Use `lims.v_api_token_overview` for active token counts and last usage; revoke tokens by updating `revoked_at`/`revoked_by` or deleting the row.
 
 Automation-authenticated workflows should pass tokens through PostgREST/PostGraphile where the token is exchanged for a JWT (future phase) or handled by a gateway component.
 

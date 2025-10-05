@@ -86,10 +86,10 @@ $$;
 
 
 --
--- Name: create_api_token(uuid, text, timestamp with time zone, jsonb); Type: FUNCTION; Schema: lims; Owner: -
+-- Name: create_api_token(uuid, text, text[], timestamp with time zone, jsonb); Type: FUNCTION; Schema: lims; Owner: -
 --
 
-CREATE FUNCTION lims.create_api_token(p_api_client_id uuid, p_plain_token text, p_expires_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS uuid
+CREATE FUNCTION lims.create_api_token(p_user_id uuid, p_plain_token text, p_allowed_roles text[] DEFAULT NULL::text[], p_expires_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS uuid
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'public', 'lims'
     AS $$
@@ -97,6 +97,7 @@ DECLARE
   token_hash text;
   token_hint text;
   new_id uuid;
+  roles text[];
 BEGIN
   IF p_plain_token IS NULL OR length(p_plain_token) < 32 THEN
     RAISE EXCEPTION 'API token must be at least 32 characters long';
@@ -106,20 +107,29 @@ BEGIN
     RAISE EXCEPTION 'metadata must be a JSON object';
   END IF;
 
+  IF NOT EXISTS (SELECT 1 FROM lims.users WHERE id = p_user_id) THEN
+    RAISE EXCEPTION 'User % not found', p_user_id;
+  END IF;
+
+  roles := COALESCE(p_allowed_roles,
+    ARRAY(SELECT role_name FROM lims.user_roles WHERE user_id = p_user_id));
+
   token_hash := encode(digest(p_plain_token, 'sha256'), 'hex');
   token_hint := right(p_plain_token, 6);
 
-  INSERT INTO lims.api_tokens (
-    api_client_id,
+  INSERT INTO lims.user_tokens (
+    user_id,
     token_digest,
+    allowed_roles,
     token_hint,
     expires_at,
     created_by,
     metadata
   )
   VALUES (
-    p_api_client_id,
+    p_user_id,
     token_hash,
+    COALESCE(roles, ARRAY[]::text[]),
     token_hint,
     p_expires_at,
     lims.current_user_id(),
@@ -516,51 +526,6 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: api_clients; Type: TABLE; Schema: lims; Owner: -
---
-
-CREATE TABLE lims.api_clients (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    client_identifier text NOT NULL,
-    display_name text NOT NULL,
-    description text,
-    contact_email public.citext,
-    allowed_roles text[] DEFAULT ARRAY[]::text[] NOT NULL,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    created_by uuid,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT api_clients_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text))
-);
-
-ALTER TABLE ONLY lims.api_clients FORCE ROW LEVEL SECURITY;
-
-
---
--- Name: api_tokens; Type: TABLE; Schema: lims; Owner: -
---
-
-CREATE TABLE lims.api_tokens (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    api_client_id uuid NOT NULL,
-    token_digest text NOT NULL,
-    token_hint text,
-    expires_at timestamp with time zone,
-    last_used_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    created_by uuid,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    revoked_at timestamp with time zone,
-    revoked_by uuid,
-    revoked_reason text,
-    CONSTRAINT api_tokens_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT api_tokens_token_hint_check CHECK (((token_hint IS NULL) OR (char_length(token_hint) <= 12)))
-);
-
-ALTER TABLE ONLY lims.api_tokens FORCE ROW LEVEL SECURITY;
-
-
---
 -- Name: audit_log; Type: TABLE; Schema: lims; Owner: -
 --
 
@@ -955,6 +920,31 @@ ALTER TABLE ONLY lims.user_roles FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: user_tokens; Type: TABLE; Schema: lims; Owner: -
+--
+
+CREATE TABLE lims.user_tokens (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    token_digest text NOT NULL,
+    allowed_roles text[] DEFAULT ARRAY[]::text[] NOT NULL,
+    token_hint text,
+    expires_at timestamp with time zone,
+    last_used_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    revoked_at timestamp with time zone,
+    revoked_by uuid,
+    revoked_reason text,
+    CONSTRAINT user_tokens_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT user_tokens_token_hint_check CHECK (((token_hint IS NULL) OR (char_length(token_hint) <= 12)))
+);
+
+ALTER TABLE ONLY lims.user_tokens FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: users; Type: TABLE; Schema: lims; Owner: -
 --
 
@@ -969,6 +959,7 @@ CREATE TABLE lims.users (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     last_authenticated_at timestamp with time zone,
+    is_service_account boolean DEFAULT false NOT NULL,
     CONSTRAINT users_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text))
 );
 
@@ -976,29 +967,28 @@ ALTER TABLE ONLY lims.users FORCE ROW LEVEL SECURITY;
 
 
 --
--- Name: v_api_client_overview; Type: VIEW; Schema: lims; Owner: -
+-- Name: v_api_token_overview; Type: VIEW; Schema: lims; Owner: -
 --
 
-CREATE VIEW lims.v_api_client_overview AS
- SELECT c.id,
-    c.client_identifier,
-    c.display_name,
-    c.allowed_roles,
-    c.created_at,
-    c.created_by,
+CREATE VIEW lims.v_api_token_overview AS
+ SELECT u.id AS user_id,
+    u.email,
+    u.full_name,
+    u.default_role,
+    u.is_service_account,
+    u.metadata,
     COALESCE(active_tokens.active_count, (0)::bigint) AS active_token_count,
-    COALESCE(last_usage.last_used_at, NULL::timestamp with time zone) AS last_token_use,
-    c.metadata
-   FROM ((lims.api_clients c
-     LEFT JOIN ( SELECT api_tokens.api_client_id,
+    COALESCE(last_usage.last_used_at, NULL::timestamp with time zone) AS last_token_use
+   FROM ((lims.users u
+     LEFT JOIN ( SELECT user_tokens.user_id,
             count(*) AS active_count
-           FROM lims.api_tokens
-          WHERE (api_tokens.revoked_at IS NULL)
-          GROUP BY api_tokens.api_client_id) active_tokens ON ((active_tokens.api_client_id = c.id)))
-     LEFT JOIN ( SELECT api_tokens.api_client_id,
-            max(api_tokens.last_used_at) AS last_used_at
-           FROM lims.api_tokens
-          GROUP BY api_tokens.api_client_id) last_usage ON ((last_usage.api_client_id = c.id)));
+           FROM lims.user_tokens
+          WHERE (user_tokens.revoked_at IS NULL)
+          GROUP BY user_tokens.user_id) active_tokens ON ((active_tokens.user_id = u.id)))
+     LEFT JOIN ( SELECT user_tokens.user_id,
+            max(user_tokens.last_used_at) AS last_used_at
+           FROM lims.user_tokens
+          GROUP BY user_tokens.user_id) last_usage ON ((last_usage.user_id = u.id)));
 
 
 --
@@ -1115,30 +1105,6 @@ CREATE TABLE public.schema_migrations (
 --
 
 ALTER TABLE ONLY lims.audit_log ALTER COLUMN id SET DEFAULT nextval('lims.audit_log_id_seq'::regclass);
-
-
---
--- Name: api_clients api_clients_client_identifier_key; Type: CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_clients
-    ADD CONSTRAINT api_clients_client_identifier_key UNIQUE (client_identifier);
-
-
---
--- Name: api_clients api_clients_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_clients
-    ADD CONSTRAINT api_clients_pkey PRIMARY KEY (id);
-
-
---
--- Name: api_tokens api_tokens_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_tokens
-    ADD CONSTRAINT api_tokens_pkey PRIMARY KEY (id);
 
 
 --
@@ -1406,6 +1372,14 @@ ALTER TABLE ONLY lims.user_roles
 
 
 --
+-- Name: user_tokens user_tokens_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.user_tokens
+    ADD CONSTRAINT user_tokens_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: lims; Owner: -
 --
 
@@ -1438,17 +1412,17 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
--- Name: idx_api_tokens_active; Type: INDEX; Schema: lims; Owner: -
+-- Name: idx_user_tokens_active; Type: INDEX; Schema: lims; Owner: -
 --
 
-CREATE INDEX idx_api_tokens_active ON lims.api_tokens USING btree (api_client_id) WHERE (revoked_at IS NULL);
+CREATE INDEX idx_user_tokens_active ON lims.user_tokens USING btree (user_id) WHERE (revoked_at IS NULL);
 
 
 --
--- Name: idx_api_tokens_client_digest; Type: INDEX; Schema: lims; Owner: -
+-- Name: idx_user_tokens_user_digest; Type: INDEX; Schema: lims; Owner: -
 --
 
-CREATE INDEX idx_api_tokens_client_digest ON lims.api_tokens USING btree (api_client_id, token_digest);
+CREATE INDEX idx_user_tokens_user_digest ON lims.user_tokens USING btree (user_id, token_digest);
 
 
 --
@@ -1487,13 +1461,6 @@ CREATE TRIGGER trg_samples_set_project BEFORE INSERT OR UPDATE ON lims.samples F
 
 
 --
--- Name: api_clients trg_touch_api_clients; Type: TRIGGER; Schema: lims; Owner: -
---
-
-CREATE TRIGGER trg_touch_api_clients BEFORE UPDATE ON lims.api_clients FOR EACH ROW EXECUTE FUNCTION lims.fn_touch_updated_at();
-
-
---
 -- Name: inventory_items trg_touch_inventory_items; Type: TRIGGER; Schema: lims; Owner: -
 --
 
@@ -1519,38 +1486,6 @@ CREATE TRIGGER trg_touch_samples BEFORE UPDATE ON lims.samples FOR EACH ROW EXEC
 --
 
 CREATE TRIGGER trg_touch_users BEFORE UPDATE ON lims.users FOR EACH ROW EXECUTE FUNCTION lims.fn_touch_updated_at();
-
-
---
--- Name: api_clients api_clients_created_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_clients
-    ADD CONSTRAINT api_clients_created_by_fkey FOREIGN KEY (created_by) REFERENCES lims.users(id);
-
-
---
--- Name: api_tokens api_tokens_api_client_id_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_tokens
-    ADD CONSTRAINT api_tokens_api_client_id_fkey FOREIGN KEY (api_client_id) REFERENCES lims.api_clients(id) ON DELETE CASCADE;
-
-
---
--- Name: api_tokens api_tokens_created_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_tokens
-    ADD CONSTRAINT api_tokens_created_by_fkey FOREIGN KEY (created_by) REFERENCES lims.users(id);
-
-
---
--- Name: api_tokens api_tokens_revoked_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
---
-
-ALTER TABLE ONLY lims.api_tokens
-    ADD CONSTRAINT api_tokens_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES lims.users(id);
 
 
 --
@@ -1898,24 +1833,36 @@ ALTER TABLE ONLY lims.user_roles
 
 
 --
+-- Name: user_tokens user_tokens_created_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.user_tokens
+    ADD CONSTRAINT user_tokens_created_by_fkey FOREIGN KEY (created_by) REFERENCES lims.users(id);
+
+
+--
+-- Name: user_tokens user_tokens_revoked_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.user_tokens
+    ADD CONSTRAINT user_tokens_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES lims.users(id);
+
+
+--
+-- Name: user_tokens user_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.user_tokens
+    ADD CONSTRAINT user_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES lims.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: users users_default_role_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
 --
 
 ALTER TABLE ONLY lims.users
     ADD CONSTRAINT users_default_role_fkey FOREIGN KEY (default_role) REFERENCES lims.roles(role_name);
 
-
---
--- Name: api_clients; Type: ROW SECURITY; Schema: lims; Owner: -
---
-
-ALTER TABLE lims.api_clients ENABLE ROW LEVEL SECURITY;
-
---
--- Name: api_tokens; Type: ROW SECURITY; Schema: lims; Owner: -
---
-
-ALTER TABLE lims.api_tokens ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: custody_events; Type: ROW SECURITY; Schema: lims; Owner: -
@@ -1952,27 +1899,6 @@ ALTER TABLE lims.labware_location_history ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE lims.labware_positions ENABLE ROW LEVEL SECURITY;
-
---
--- Name: api_clients p_api_clients_admin_all; Type: POLICY; Schema: lims; Owner: -
---
-
-CREATE POLICY p_api_clients_admin_all ON lims.api_clients TO app_admin USING (true) WITH CHECK (true);
-
-
---
--- Name: api_clients p_api_clients_read_ops; Type: POLICY; Schema: lims; Owner: -
---
-
-CREATE POLICY p_api_clients_read_ops ON lims.api_clients FOR SELECT TO app_operator USING (true);
-
-
---
--- Name: api_tokens p_api_tokens_admin_all; Type: POLICY; Schema: lims; Owner: -
---
-
-CREATE POLICY p_api_tokens_admin_all ON lims.api_tokens TO app_admin USING (true) WITH CHECK (true);
-
 
 --
 -- Name: custody_events p_custody_events_admin_all; Type: POLICY; Schema: lims; Owner: -
@@ -2341,6 +2267,20 @@ CREATE POLICY p_user_roles_self_select ON lims.user_roles FOR SELECT TO app_auth
 
 
 --
+-- Name: user_tokens p_user_tokens_admin_all; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_user_tokens_admin_all ON lims.user_tokens TO app_admin USING (true) WITH CHECK (true);
+
+
+--
+-- Name: user_tokens p_user_tokens_owner_select; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_user_tokens_owner_select ON lims.user_tokens FOR SELECT TO app_auth USING ((user_id = lims.current_user_id()));
+
+
+--
 -- Name: users p_users_admin_all; Type: POLICY; Schema: lims; Owner: -
 --
 
@@ -2429,6 +2369,12 @@ ALTER TABLE lims.storage_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lims.user_roles ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: user_tokens; Type: ROW SECURITY; Schema: lims; Owner: -
+--
+
+ALTER TABLE lims.user_tokens ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: users; Type: ROW SECURITY; Schema: lims; Owner: -
 --
 
@@ -2448,4 +2394,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20240513001000'),
     ('20240513002000'),
     ('20240513003000'),
-    ('20240513004000');
+    ('20240513004000'),
+    ('20240513005000');
