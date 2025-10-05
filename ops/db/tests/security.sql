@@ -106,6 +106,7 @@ DO $$
 DECLARE
   total_users integer;
   others integer;
+  visible_projects text[];
 BEGIN
   SELECT count(*) INTO total_users FROM lims.users;
   IF total_users <> 1 THEN
@@ -137,6 +138,12 @@ BEGIN
   IF total_users <> 1 THEN
     RAISE EXCEPTION 'Researcher should see sample overview for their accessible sample';
   END IF;
+
+  SELECT array_agg(project_code ORDER BY project_code) INTO visible_projects
+  FROM lims.projects;
+  IF visible_projects IS NULL OR visible_projects <> ARRAY['PRJ-001','PRJ-002'] THEN
+    RAISE EXCEPTION 'Alice project visibility incorrect: %', visible_projects;
+  END IF;
 END;
 $$;
 
@@ -150,6 +157,7 @@ SELECT set_config('lims.current_user_id', current_setting('session.bob_id', true
 DO $$
 DECLARE
   visible_users integer;
+  visible_projects text[];
 BEGIN
   SELECT count(*) INTO visible_users FROM lims.users;
   IF visible_users <> 1 THEN
@@ -187,6 +195,20 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Bob sample overview missing own record';
   END IF;
+
+  SELECT array_agg(project_code ORDER BY project_code) INTO visible_projects
+  FROM lims.projects;
+  IF visible_projects IS NULL OR visible_projects <> ARRAY['PRJ-003'] THEN
+    RAISE EXCEPTION 'Bob project visibility incorrect: %', visible_projects;
+  END IF;
+
+  BEGIN
+    PERFORM 1 FROM lims.inventory_items;
+    RAISE EXCEPTION 'Bob should not see inventory items';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      NULL;
+  END;
 END;
 $$;
 

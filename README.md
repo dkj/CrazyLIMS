@@ -58,6 +58,8 @@ Schemas/tables created so far include:
 
 Helper functions such as `lims.current_roles()`, `lims.current_user_id()`, `lims.pre_request()`, and `lims.create_api_token()` power RLS and API token workflows.
 
+See `docs/domain-samples.md` for a detailed explanation of the sample model, derivative workflows, and project-based visibility.
+
 ## JWT Fixtures & Usage
 
 Development JWTs live under `ops/examples/jwts`:

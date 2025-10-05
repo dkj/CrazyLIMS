@@ -11,6 +11,7 @@
   - Expand `lims.samples` with lifecycle metadata (collection protocol, condition flags, stability windows) and support for both primary and derivative samples.
   - Introduce `lims.sample_derivations` (explicit lineage table) to represent aliquots/splits with enforced DAG constraints (parent must exist, prevent cycles) and capture derivation method (e.g., dilution, plating).
   - Maintain `lims.sample_properties` (JSONB key/value or normalized attributes) for assay-specific metadata without schema churn.
+  - Document the canonical sample definition (single material identity spanning multiple labware pieces) and project-scoped visibility rules in `docs/domain-samples.md`.
 
 - **Labware & Barcoding**
   - Create `lims.labware_types` describing container formats (tube 2 mL, 96-well plate, custom cartridge) with attributes: capacity, well layout, barcode schema requirements (1D/2D, prefix rules).

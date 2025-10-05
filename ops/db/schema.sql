@@ -59,6 +59,33 @@ COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UU
 
 
 --
+-- Name: can_access_project(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_project(p_project_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_project_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.project_members pm
+    WHERE pm.project_id = p_project_id
+      AND pm.user_id = lims.current_user_id()
+  );
+END;
+$$;
+
+
+--
 -- Name: create_api_token(uuid, text, timestamp with time zone, jsonb); Type: FUNCTION; Schema: lims; Owner: -
 --
 
@@ -330,6 +357,40 @@ BEGIN
   );
 
   RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+--
+-- Name: fn_samples_set_project(); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.fn_samples_set_project() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+DECLARE
+  proj_id uuid;
+BEGIN
+  IF NEW.project_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.project_code IS NULL THEN
+    RAISE EXCEPTION 'project_id or project_code must be supplied';
+  END IF;
+
+  SELECT id INTO proj_id FROM lims.projects WHERE project_code = NEW.project_code;
+
+  IF proj_id IS NULL THEN
+    INSERT INTO lims.projects(project_code, name)
+    VALUES (NEW.project_code, NEW.project_code)
+    ON CONFLICT (project_code) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id INTO proj_id;
+  END IF;
+
+  NEW.project_id := proj_id;
+  RETURN NEW;
 END;
 $$;
 
@@ -695,6 +756,37 @@ CREATE TABLE lims.labware_types (
 
 
 --
+-- Name: project_members; Type: TABLE; Schema: lims; Owner: -
+--
+
+CREATE TABLE lims.project_members (
+    project_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    member_role text,
+    added_at timestamp with time zone DEFAULT now() NOT NULL,
+    added_by uuid
+);
+
+ALTER TABLE ONLY lims.project_members FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: projects; Type: TABLE; Schema: lims; Owner: -
+--
+
+CREATE TABLE lims.projects (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    project_code text NOT NULL,
+    name text NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid
+);
+
+ALTER TABLE ONLY lims.projects FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: roles; Type: TABLE; Schema: lims; Owner: -
 --
 
@@ -791,7 +883,8 @@ CREATE TABLE lims.samples (
     condition_notes text,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    current_labware_id uuid
+    current_labware_id uuid,
+    project_id uuid NOT NULL
 );
 
 ALTER TABLE ONLY lims.samples FORCE ROW LEVEL SECURITY;
@@ -1161,6 +1254,30 @@ ALTER TABLE ONLY lims.labware_types
 
 
 --
+-- Name: project_members project_members_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.project_members
+    ADD CONSTRAINT project_members_pkey PRIMARY KEY (project_id, user_id);
+
+
+--
+-- Name: projects projects_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.projects
+    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: projects projects_project_code_key; Type: CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.projects
+    ADD CONSTRAINT projects_project_code_key UNIQUE (project_code);
+
+
+--
 -- Name: roles roles_pkey; Type: CONSTRAINT; Schema: lims; Owner: -
 --
 
@@ -1360,6 +1477,13 @@ CREATE TRIGGER trg_audit_user_roles AFTER INSERT OR DELETE OR UPDATE ON lims.use
 --
 
 CREATE TRIGGER trg_audit_users AFTER INSERT OR DELETE OR UPDATE ON lims.users FOR EACH ROW EXECUTE FUNCTION lims.fn_audit();
+
+
+--
+-- Name: samples trg_samples_set_project; Type: TRIGGER; Schema: lims; Owner: -
+--
+
+CREATE TRIGGER trg_samples_set_project BEFORE INSERT OR UPDATE ON lims.samples FOR EACH ROW EXECUTE FUNCTION lims.fn_samples_set_project();
 
 
 --
@@ -1574,6 +1698,38 @@ ALTER TABLE ONLY lims.labware_positions
 
 
 --
+-- Name: project_members project_members_added_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.project_members
+    ADD CONSTRAINT project_members_added_by_fkey FOREIGN KEY (added_by) REFERENCES lims.users(id);
+
+
+--
+-- Name: project_members project_members_project_id_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.project_members
+    ADD CONSTRAINT project_members_project_id_fkey FOREIGN KEY (project_id) REFERENCES lims.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_members project_members_user_id_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.project_members
+    ADD CONSTRAINT project_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES lims.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: projects projects_created_by_fkey; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.projects
+    ADD CONSTRAINT projects_created_by_fkey FOREIGN KEY (created_by) REFERENCES lims.users(id);
+
+
+--
 -- Name: roles roles_created_by_fk; Type: FK CONSTRAINT; Schema: lims; Owner: -
 --
 
@@ -1667,6 +1823,14 @@ ALTER TABLE ONLY lims.samples
 
 ALTER TABLE ONLY lims.samples
     ADD CONSTRAINT samples_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES lims.samples(id) ON DELETE SET NULL;
+
+
+--
+-- Name: samples samples_project_id_fk; Type: FK CONSTRAINT; Schema: lims; Owner: -
+--
+
+ALTER TABLE ONLY lims.samples
+    ADD CONSTRAINT samples_project_id_fk FOREIGN KEY (project_id) REFERENCES lims.projects(id);
 
 
 --
@@ -1937,6 +2101,50 @@ CREATE POLICY p_labware_select_researcher ON lims.labware FOR SELECT TO app_auth
 
 
 --
+-- Name: project_members p_project_members_admin_all; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_project_members_admin_all ON lims.project_members TO app_admin USING (true) WITH CHECK (true);
+
+
+--
+-- Name: project_members p_project_members_member_select; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_project_members_member_select ON lims.project_members FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR (user_id = lims.current_user_id())));
+
+
+--
+-- Name: project_members p_project_members_operator_select; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_project_members_operator_select ON lims.project_members FOR SELECT TO app_operator USING (true);
+
+
+--
+-- Name: projects p_projects_admin_all; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_projects_admin_all ON lims.projects TO app_admin USING (true) WITH CHECK (true);
+
+
+--
+-- Name: projects p_projects_member_select; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_projects_member_select ON lims.projects FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR (EXISTS ( SELECT 1
+   FROM lims.project_members pm
+  WHERE ((pm.project_id = projects.id) AND (pm.user_id = lims.current_user_id()))))));
+
+
+--
+-- Name: projects p_projects_operator_manage; Type: POLICY; Schema: lims; Owner: -
+--
+
+CREATE POLICY p_projects_operator_manage ON lims.projects FOR SELECT TO app_operator USING (true);
+
+
+--
 -- Name: roles p_roles_select_all; Type: POLICY; Schema: lims; Owner: -
 --
 
@@ -2003,7 +2211,7 @@ CREATE POLICY p_samples_delete_admin ON lims.samples FOR DELETE TO app_admin USI
 -- Name: samples p_samples_delete_ops; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_delete_ops ON lims.samples FOR DELETE TO app_operator USING (true);
+CREATE POLICY p_samples_delete_ops ON lims.samples FOR DELETE TO app_operator USING (lims.can_access_project(project_id));
 
 
 --
@@ -2017,14 +2225,14 @@ CREATE POLICY p_samples_insert_admin ON lims.samples FOR INSERT TO app_admin WIT
 -- Name: samples p_samples_insert_automation; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_insert_automation ON lims.samples FOR INSERT TO app_automation WITH CHECK (true);
+CREATE POLICY p_samples_insert_automation ON lims.samples FOR INSERT TO app_automation WITH CHECK (lims.can_access_project(project_id));
 
 
 --
 -- Name: samples p_samples_insert_ops; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_insert_ops ON lims.samples FOR INSERT TO app_operator WITH CHECK (true);
+CREATE POLICY p_samples_insert_ops ON lims.samples FOR INSERT TO app_operator WITH CHECK (lims.can_access_project(project_id));
 
 
 --
@@ -2052,7 +2260,7 @@ CREATE POLICY p_samples_select_operator ON lims.samples FOR SELECT TO app_operat
 -- Name: samples p_samples_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_select_researcher ON lims.samples FOR SELECT TO app_researcher USING ((lims.current_user_id() = created_by));
+CREATE POLICY p_samples_select_researcher ON lims.samples FOR SELECT TO app_researcher USING (lims.can_access_project(project_id));
 
 
 --
@@ -2066,14 +2274,14 @@ CREATE POLICY p_samples_update_admin ON lims.samples FOR UPDATE TO app_admin USI
 -- Name: samples p_samples_update_automation; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_update_automation ON lims.samples FOR UPDATE TO app_automation USING (true) WITH CHECK (true);
+CREATE POLICY p_samples_update_automation ON lims.samples FOR UPDATE TO app_automation USING (lims.can_access_project(project_id)) WITH CHECK (lims.can_access_project(project_id));
 
 
 --
 -- Name: samples p_samples_update_ops; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_samples_update_ops ON lims.samples FOR UPDATE TO app_operator USING (true) WITH CHECK (true);
+CREATE POLICY p_samples_update_ops ON lims.samples FOR UPDATE TO app_operator USING (lims.can_access_project(project_id)) WITH CHECK (lims.can_access_project(project_id));
 
 
 --
@@ -2161,6 +2369,18 @@ CREATE POLICY p_users_self_update ON lims.users FOR UPDATE TO app_auth USING ((l
 
 
 --
+-- Name: project_members; Type: ROW SECURITY; Schema: lims; Owner: -
+--
+
+ALTER TABLE lims.project_members ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: projects; Type: ROW SECURITY; Schema: lims; Owner: -
+--
+
+ALTER TABLE lims.projects ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: roles; Type: ROW SECURITY; Schema: lims; Owner: -
 --
 
@@ -2227,4 +2447,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20240513000000'),
     ('20240513001000'),
     ('20240513002000'),
-    ('20240513003000');
+    ('20240513003000'),
+    ('20240513004000');
