@@ -4,9 +4,12 @@ export interface SampleOverviewRow {
   sample_type_code: string | null;
   sample_status: string | null;
   collected_at: string | null;
+  project_id: string;
   project_code: string | null;
+  project_name: string | null;
   current_labware_barcode: string | null;
   storage_path: string | null;
+  derivatives: Array<Record<string, unknown>> | null;
 }
 
 export interface LabwareContentRow {
@@ -40,4 +43,15 @@ export interface UserRow {
   full_name: string;
   default_role: string | null;
   is_service_account: boolean;
+}
+
+export interface ProjectAccessRow {
+  id: string;
+  project_code: string;
+  name: string;
+  description: string | null;
+  is_member: boolean;
+  access_via: string;
+  sample_count: number;
+  active_labware_count: number;
 }

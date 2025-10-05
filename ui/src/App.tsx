@@ -5,7 +5,8 @@ import type {
   SampleOverviewRow,
   LabwareContentRow,
   InventoryStatusRow,
-  UserRow
+  UserRow,
+  ProjectAccessRow
 } from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
@@ -24,6 +25,26 @@ const personaTokenPaths: Record<string, string> = {
   researcher: "/tokens/researcher.jwt",
   researcher_bob: "/tokens/researcher_bob.jwt"
 };
+
+function decodeJwt(token: string | undefined) {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+        .join("")
+    );
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch (error) {
+    console.error("Failed to decode JWT", error);
+    return null;
+  }
+}
 
 function usePersonaToken(selected: string | null): string | undefined {
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -117,15 +138,47 @@ function useGet<T>(endpoint: string, token: string | undefined) {
 export default function App() {
   const [persona, setPersona] = useState<string | null>(null);
   const token = usePersonaToken(persona);
+  const claims = useMemo(() => decodeJwt(token), [token]);
+  const activeRoles = useMemo(() => {
+    if (!claims) return [] as string[];
+    const rolesClaim = (claims["roles"] ?? claims["role"]) as unknown;
+
+    if (Array.isArray(rolesClaim)) {
+      return Array.from(new Set(rolesClaim.map((role) => String(role))));
+    }
+
+    if (typeof rolesClaim === "string") {
+      return [rolesClaim];
+    }
+
+    return [] as string[];
+  }, [claims]);
+
+  const displayName = useMemo(() => {
+    if (!claims) return undefined;
+    const preferred = claims["preferred_username"];
+    if (typeof preferred === "string") return preferred;
+    const email = claims["email"];
+    if (typeof email === "string") return email;
+    const sub = claims["sub"];
+    if (typeof sub === "string") return sub;
+    return undefined;
+  }, [claims]);
 
   const sampleView = useGet<SampleOverviewRow>("/v_sample_overview", token);
   const labwareView = useGet<LabwareContentRow>("/v_labware_contents", token);
   const inventoryView = useGet<InventoryStatusRow>("/v_inventory_status", token);
   const usersView = useGet<UserRow>("/users", token);
+  const projectSummaryView = useGet<ProjectAccessRow>(
+    "/v_project_access_overview",
+    token
+  );
 
   const sampleColumns = useMemo(
     () => [
       { key: "name", label: "Sample" },
+      { key: "project_code", label: "Project" },
+      { key: "project_name", label: "Project Name" },
       { key: "sample_type_code", label: "Type" },
       { key: "sample_status", label: "Status" },
       { key: "collected_at", label: "Collected" },
@@ -170,10 +223,38 @@ export default function App() {
     []
   );
 
+  const projectColumns = useMemo(
+    () => [
+      { key: "project_code", label: "Code" },
+      { key: "name", label: "Project" },
+      { key: "access_via", label: "Access Via" },
+      { key: "is_member", label: "Member" },
+      { key: "sample_count", label: "Samples" },
+      { key: "active_labware_count", label: "Active Labware" }
+    ],
+    []
+  );
+
   return (
     <div className="app">
       <header className="app__header">
-        <h1>CrazyLIMS – Operations Console</h1>
+        <div className="app__header-content">
+          <h1>CrazyLIMS – Operations Console</h1>
+          {persona && (
+            <div className="session-info">
+              {displayName && (
+                <span>
+                  Signed in as <strong>{displayName}</strong>
+                </span>
+              )}
+              {!!activeRoles.length && (
+                <span>
+                  Active roles: {activeRoles.join(", ")}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
         <PersonaSelector
           personas={personaLabels}
           selected={persona}
@@ -188,6 +269,21 @@ export default function App() {
 
         {persona && (
           <>
+            <section>
+              <h2>Project Access Overview</h2>
+              <p className="section-subtitle">
+                The projects listed here reflect row-level security. Counts only
+                include data your current roles can see.
+              </p>
+              <DataTable
+                columns={projectColumns}
+                rows={projectSummaryView.data}
+                loading={projectSummaryView.loading}
+                error={projectSummaryView.error}
+                emptyMessage="No projects visible."
+              />
+            </section>
+
             <section>
               <h2>Sample Overview</h2>
               <DataTable

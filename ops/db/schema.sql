@@ -1209,6 +1209,41 @@ CREATE VIEW lims.v_labware_contents WITH (security_invoker='true') AS
 
 
 --
+-- Name: v_project_access_overview; Type: VIEW; Schema: lims; Owner: -
+--
+
+CREATE VIEW lims.v_project_access_overview WITH (security_invoker='true') AS
+ SELECT p.id,
+    p.project_code,
+    p.name,
+    p.description,
+    COALESCE(membership.is_member, false) AS is_member,
+        CASE
+            WHEN lims.has_role('app_admin'::text) THEN 'admin'::text
+            WHEN lims.has_role('app_operator'::text) THEN 'operator'::text
+            WHEN COALESCE(membership.is_member, false) THEN 'project_membership'::text
+            ELSE 'role_policy'::text
+        END AS access_via,
+    COALESCE(sample_stats.sample_count, (0)::bigint) AS sample_count,
+    COALESCE(labware_stats.labware_count, (0)::bigint) AS active_labware_count
+   FROM (((lims.projects p
+     LEFT JOIN LATERAL ( SELECT true AS is_member
+           FROM lims.project_members pm
+          WHERE ((pm.project_id = p.id) AND (pm.user_id = lims.current_user_id()))
+         LIMIT 1) membership ON (true))
+     LEFT JOIN LATERAL ( SELECT count(DISTINCT s.id) AS sample_count
+           FROM lims.samples s
+          WHERE (s.project_id = p.id)) sample_stats ON (true))
+     LEFT JOIN LATERAL ( SELECT count(DISTINCT lw.id) AS labware_count
+           FROM lims.labware lw
+          WHERE (EXISTS ( SELECT 1
+                   FROM lims.samples s
+                  WHERE ((s.project_id = p.id) AND ((s.current_labware_id = lw.id) OR (EXISTS ( SELECT 1
+                           FROM lims.sample_labware_assignments sla
+                          WHERE ((sla.sample_id = s.id) AND (sla.labware_id = lw.id) AND (sla.released_at IS NULL))))))))) labware_stats ON (true));
+
+
+--
 -- Name: v_sample_overview; Type: VIEW; Schema: lims; Owner: -
 --
 
@@ -1218,13 +1253,16 @@ CREATE VIEW lims.v_sample_overview WITH (security_invoker='true') AS
     s.sample_type_code,
     s.sample_status,
     s.collected_at,
-    s.project_code,
+    s.project_id,
+    p.project_code,
+    p.name AS project_name,
     lab.barcode AS current_labware_barcode,
     loc_path.path_text AS storage_path,
     ( SELECT jsonb_agg(jsonb_build_object('child_sample_id', sd.child_sample_id, 'method', sd.method)) AS jsonb_agg
            FROM lims.sample_derivations sd
           WHERE (sd.parent_sample_id = s.id)) AS derivatives
-   FROM ((lims.samples s
+   FROM (((lims.samples s
+     JOIN lims.projects p ON ((p.id = s.project_id)))
      LEFT JOIN lims.labware lab ON ((lab.id = s.current_labware_id)))
      LEFT JOIN LATERAL ( SELECT string_agg(format('%s/%s/%s'::text, COALESCE(sf.name, ''::text), COALESCE(su.name, ''::text), COALESCE(ss.name, ''::text)), ' → '::text) AS path_text
            FROM ((lims.storage_sublocations ss
@@ -2557,4 +2595,6 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20240513003000'),
     ('20240513004000'),
     ('20240513005000'),
-    ('20240520010000');
+    ('20240520010000'),
+    ('20240520011000'),
+    ('20240520012000');

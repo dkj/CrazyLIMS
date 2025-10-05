@@ -125,6 +125,8 @@ main() {
   request_postgrest "researcher-bob-labware" "researcher_bob.jwt" "200" "GET" "/labware?select=barcode" '' 'map(.barcode) == ["TUBE-0002"]'
   request_postgrest "researcher-projects" "researcher.jwt" "200" "GET" "/projects?select=project_code" '' 'map(.project_code) | sort == ["PRJ-001","PRJ-002"]'
   request_postgrest "researcher-bob-projects" "researcher_bob.jwt" "200" "GET" "/projects?select=project_code" '' 'map(.project_code) == ["PRJ-003"]'
+  request_postgrest "researcher-project-summary" "researcher.jwt" "200" "GET" "/v_project_access_overview?select=project_code,access_via,sample_count&order=project_code" '' '(. as $rows | ($rows | map(.project_code) | sort == ["PRJ-001","PRJ-002"]) and ($rows | all(.access_via == "project_membership")))'
+  request_postgrest "researcher-bob-project-summary" "researcher_bob.jwt" "200" "GET" "/v_project_access_overview?select=project_code,access_via,sample_count" '' '(. as $rows | ($rows | map(.project_code) == ["PRJ-003"]) and ($rows | all(.access_via == "project_membership")))'
   request_postgrest "researcher-inventory" "researcher.jwt" "403" "GET" "/inventory_items" '' ''
   request_postgrest "researcher-storage" "researcher.jwt" "200" "GET" "/storage_sublocations?select=name" '' 'map(.name) == ["Shelf 1"]'
   request_postgrest "researcher-bob-storage" "researcher_bob.jwt" "200" "GET" "/storage_sublocations?select=name" '' 'map(.name) == ["Shelf 1"]'
