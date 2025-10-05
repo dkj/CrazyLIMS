@@ -6,7 +6,8 @@ These example tokens let you impersonate common personas when calling PostgREST 
 
 - `admin.jwt` – Administrator with operator fallback role.
 - `operator.jwt` – Operations user able to manage samples.
-- `researcher.jwt` – Researcher with read access only.
+- `researcher.jwt` – Researcher (Alice) with read access scoped to her samples.
+- `researcher_bob.jwt` – Researcher (Bob) scoped to a different project/sample set.
 
 ## Regenerating tokens
 

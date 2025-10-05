@@ -552,12 +552,35 @@ USING (
   OR lims.current_user_id() = user_id
 );
 
-DROP POLICY IF EXISTS p_samples_select_all ON lims.samples;
-CREATE POLICY p_samples_select_all
+DROP POLICY IF EXISTS p_samples_select_researcher ON lims.samples;
+DROP POLICY IF EXISTS p_samples_select_automation ON lims.samples;
+DROP POLICY IF EXISTS p_samples_select_operator ON lims.samples;
+DROP POLICY IF EXISTS p_samples_select_admin ON lims.samples;
+CREATE POLICY p_samples_select_admin
 ON lims.samples
 FOR SELECT
-TO app_auth
+TO app_admin
 USING (TRUE);
+
+CREATE POLICY p_samples_select_operator
+ON lims.samples
+FOR SELECT
+TO app_operator
+USING (TRUE);
+
+CREATE POLICY p_samples_select_automation
+ON lims.samples
+FOR SELECT
+TO app_automation
+USING (TRUE);
+
+CREATE POLICY p_samples_select_researcher
+ON lims.samples
+FOR SELECT
+TO app_researcher
+USING (
+  lims.current_user_id() = created_by
+);
 
 DROP POLICY IF EXISTS p_samples_insert_ops ON lims.samples;
 DROP POLICY IF EXISTS p_samples_update_ops ON lims.samples;
@@ -677,7 +700,8 @@ FROM (
   VALUES
     ('admin@example.org', 'Admin User', 'urn:lims:user:admin', 'app_admin', true),
     ('operator@example.org', 'Olivia Operator', 'urn:lims:user:operator', 'app_operator', true),
-    ('alice@example.org', 'Alice Scientist', 'urn:lims:user:alice', 'app_researcher', true)
+    ('alice@example.org', 'Alice Scientist', 'urn:lims:user:alice', 'app_researcher', true),
+    ('bob@example.org', 'Bob Scientist', 'urn:lims:user:bob', 'app_researcher', true)
 ) AS seed(email, full_name, external_id, default_role, is_active)
 ON CONFLICT (email) DO UPDATE
 SET full_name = EXCLUDED.full_name,
@@ -691,7 +715,8 @@ FROM (
     ('admin@example.org', 'app_admin'),
     ('admin@example.org', 'app_operator'),
     ('operator@example.org', 'app_operator'),
-    ('alice@example.org', 'app_researcher')
+    ('alice@example.org', 'app_researcher'),
+    ('bob@example.org', 'app_researcher')
 ) AS seed(email, role_name)
 JOIN lims.users u ON u.email = seed.email
 JOIN lims.users admin_user ON admin_user.email = 'admin@example.org'
@@ -725,7 +750,7 @@ WHERE NOT EXISTS (
 -- migrate:down
 DELETE FROM lims.samples WHERE name IN ('PBMC Batch 001', 'Serum Tube A');
 DELETE FROM lims.user_roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher');
-DELETE FROM lims.users WHERE email IN ('admin@example.org', 'operator@example.org', 'alice@example.org');
+DELETE FROM lims.users WHERE email IN ('admin@example.org', 'operator@example.org', 'alice@example.org', 'bob@example.org');
 DELETE FROM lims.roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher', 'app_external', 'app_automation');
 
 REVOKE SELECT ON lims.audit_log FROM app_operator;

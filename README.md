@@ -74,6 +74,7 @@ Running `make jwt/dev` also copies the generated fixtures into `ui/public/tokens
   - Labware contents (`/v_labware_contents`)
   - Inventory status (`/v_inventory_status`)
 - As RBAC applies, switching personas immediately changes the dataset (e.g., researchers see only their permitted samples).
+- Two researcher personas are available (`Researcher (Alice)` and `Researcher (Bob)`) to demonstrate sample-level row security—each can only see records they authored.
 - Modify components under `ui/src` to iterate on additional visualizations or workflows.
 - API calls are routed through the Vite dev-server proxy at `/api`, so the browser never needs to resolve the `postgrest` container hostname. Override the proxy target with `VITE_POSTGREST_SERVER_TARGET` (and optionally the public base with `VITE_POSTGREST_BROWSER_BASE`) when running PostgREST on a different address.
 

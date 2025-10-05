@@ -99,7 +99,8 @@ main() {
   request_postgrest "operator" "operator.jwt" "200" "GET" "/users" '' 'length > 0'
   request_postgrest "researcher" "researcher.jwt" "200" "GET" "/users" '' 'length <= 1 and (length == 0 or .[0].email == "alice@example.org")'
   request_postgrest "admin" "admin.jwt" "200" "GET" "/v_sample_overview" '' 'length > 0'
-  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/v_sample_overview" '' 'length >= 0'
+  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/v_sample_overview?select=name" '' 'map(.name) | sort == ["PBMC Aliquot A","PBMC Batch 001","Serum Plate Control","Serum Tube A"]'
+  request_postgrest "researcher-bob" "researcher_bob.jwt" "200" "GET" "/v_sample_overview?select=name" '' 'map(.name) == ["Neutralizing Panel B"]'
 
   request_postgrest "operator-create" "operator.jwt" "201" "POST" "/samples" '{"name":"Automation Smoke","sample_type":"test","project_code":"PRJ-TEST"}' ''
   request_postgrest "researcher-create" "researcher.jwt" "403" "POST" "/samples" '{"name":"Researcher Fail","sample_type":"test"}' ''

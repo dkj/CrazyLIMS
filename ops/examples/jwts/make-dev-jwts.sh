@@ -45,6 +45,12 @@ researcher_payload=$(cat <<JSON
 JSON
 )
 
+researcher_bob_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:bob","preferred_username":"bob","email":"bob@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
 emit_token "admin" "${admin_payload}"
 emit_token "operator" "${operator_payload}"
 emit_token "researcher" "${researcher_payload}"
+emit_token "researcher_bob" "${researcher_bob_payload}"

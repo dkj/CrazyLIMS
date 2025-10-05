@@ -47,8 +47,10 @@ $$;
 
 RESET ROLE;
 
+-- Cache researcher IDs for session use under RLS
 SET ROLE app_admin;
-SELECT set_config('session.researcher_id', (SELECT id::text FROM lims.users WHERE email = 'alice@example.org'), false);
+SELECT set_config('session.alice_id', (SELECT id::text FROM lims.users WHERE email = 'alice@example.org'), false);
+SELECT set_config('session.bob_id', (SELECT id::text FROM lims.users WHERE email = 'bob@example.org'), false);
 RESET ROLE;
 
 -- Labware and storage setup
@@ -96,10 +98,9 @@ $$;
 RESET ROLE;
 
 -- Researcher should only see their own record via RLS (simulating PostgREST session)
-SET ROLE app_auth;
-SELECT set_config('role', 'app_researcher', false);
+SET ROLE app_researcher;
 SELECT set_config('lims.current_roles', 'app_researcher', false);
-SELECT set_config('lims.current_user_id', current_setting('session.researcher_id', true), false);
+SELECT set_config('lims.current_user_id', current_setting('session.alice_id', true), false);
 
 DO $$
 DECLARE
@@ -135,6 +136,56 @@ BEGIN
   SELECT count(*) INTO total_users FROM lims.v_sample_overview WHERE current_labware_barcode = 'TEST-LABWARE-001';
   IF total_users <> 1 THEN
     RAISE EXCEPTION 'Researcher should see sample overview for their accessible sample';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+-- Second researcher should only see their own data
+SET ROLE app_researcher;
+SELECT set_config('lims.current_roles', 'app_researcher', false);
+SELECT set_config('lims.current_user_id', current_setting('session.bob_id', true), false);
+
+DO $$
+DECLARE
+  visible_users integer;
+BEGIN
+  SELECT count(*) INTO visible_users FROM lims.users;
+  IF visible_users <> 1 THEN
+    RAISE EXCEPTION 'Bob should only see his own user record';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM lims.users WHERE email <> 'bob@example.org') THEN
+    RAISE EXCEPTION 'Bob was able to see other user records';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM lims.samples
+    WHERE name IN ('PBMC Batch 001', 'Serum Plate Control')
+  ) THEN
+    RAISE EXCEPTION 'Bob should not see Alice samples';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM lims.samples
+    WHERE name = 'Neutralizing Panel B'
+  ) THEN
+    RAISE EXCEPTION 'Bob did not see his own sample';
+  END IF;
+
+  IF (SELECT count(*) FROM lims.v_sample_overview) <> 1 THEN
+    RAISE EXCEPTION 'Bob sample overview count mismatch';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM lims.v_sample_overview
+    WHERE name = 'Neutralizing Panel B'
+  ) THEN
+    RAISE EXCEPTION 'Bob sample overview missing own record';
   END IF;
 END;
 $$;

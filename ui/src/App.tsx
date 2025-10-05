@@ -9,13 +9,15 @@ const API_BASE = POSTGREST_URL.replace(/\/$/, "");
 const personaLabels: Record<string, string> = {
   admin: "Administrator",
   operator: "Operator",
-  researcher: "Researcher"
+  researcher: "Researcher (Alice)",
+  researcher_bob: "Researcher (Bob)"
 };
 
 const personaTokenPaths: Record<string, string> = {
   admin: "/tokens/admin.jwt",
   operator: "/tokens/operator.jwt",
-  researcher: "/tokens/researcher.jwt"
+  researcher: "/tokens/researcher.jwt",
+  researcher_bob: "/tokens/researcher_bob.jwt"
 };
 
 function usePersonaToken(selected: string | null): string | undefined {
@@ -51,28 +53,57 @@ function useGet<T>(endpoint: string, token: string | undefined) {
   useEffect(() => {
     if (!token) {
       setData([]);
+      setError(null);
       return;
     }
-    setLoading(true);
-    setError(null);
-    fetch(`${API_BASE}${endpoint}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-      .then(async (res) => {
+
+    let cancelled = false;
+
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) {
+            setData([]);
+            setError("You do not have access to this data.");
+          }
+          return;
+        }
+
         if (!res.ok) {
           const body = await res.text();
           throw new Error(`${res.status} ${res.statusText}: ${body}`);
         }
-        return res.json();
-      })
-      .then((payload: T[]) => setData(payload))
-      .catch((err) => {
+
+        const payload: T[] = await res.json();
+        if (!cancelled) {
+          setData(payload);
+        }
+      } catch (err) {
         console.error(err);
-        setError(err.message);
-      })
-      .finally(() => setLoading(false));
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [endpoint, token]);
 
   return { data, loading, error };

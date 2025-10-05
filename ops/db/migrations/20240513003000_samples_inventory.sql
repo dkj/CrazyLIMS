@@ -255,7 +255,9 @@ CREATE TABLE IF NOT EXISTS lims.inventory_transactions (
 -- Views
 -------------------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW lims.v_sample_overview AS
+CREATE OR REPLACE VIEW lims.v_sample_overview
+WITH (security_invoker = true)
+AS
 SELECT
   s.id,
   s.name,
@@ -278,7 +280,9 @@ LEFT JOIN LATERAL (
   WHERE ss.id = lab.current_storage_sublocation_id
 ) loc_path ON true;
 
-CREATE OR REPLACE VIEW lims.v_labware_contents AS
+CREATE OR REPLACE VIEW lims.v_labware_contents
+WITH (security_invoker = true)
+AS
 SELECT
   lw.id AS labware_id,
   lw.barcode,
@@ -295,7 +299,9 @@ LEFT JOIN lims.labware_positions pos ON pos.labware_id = lw.id
 LEFT JOIN lims.sample_labware_assignments sla ON sla.labware_id = lw.id AND (sla.labware_position_id = pos.id OR sla.labware_position_id IS NULL)
 LEFT JOIN lims.samples s ON s.id = sla.sample_id;
 
-CREATE OR REPLACE VIEW lims.v_storage_dashboard AS
+CREATE OR REPLACE VIEW lims.v_storage_dashboard
+WITH (security_invoker = true)
+AS
 SELECT
   sf.name AS facility,
   su.name AS unit,
@@ -310,7 +316,9 @@ LEFT JOIN lims.labware lw ON lw.current_storage_sublocation_id = ss.id
 LEFT JOIN lims.sample_labware_assignments sla ON sla.labware_id = lw.id AND sla.released_at IS NULL
 GROUP BY sf.name, su.name, su.storage_type, ss.name;
 
-CREATE OR REPLACE VIEW lims.v_inventory_status AS
+CREATE OR REPLACE VIEW lims.v_inventory_status
+WITH (security_invoker = true)
+AS
 SELECT
   ii.id,
   ii.name,
@@ -433,10 +441,182 @@ JOIN lims.storage_facilities sf ON sf.id = su.facility_id AND sf.name = 'Main La
 WHERE su.name = 'Freezer 1'
 ON CONFLICT (unit_id, name) DO NOTHING;
 
+-- Additional demo samples for UI scenarios
+INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by)
+SELECT 'PBMC Aliquot A', 'cell', 'PRJ-001', 'available', 'cell', now() - interval '3 days', u.id
+FROM lims.users u
+WHERE u.email = 'alice@example.org'
+  AND NOT EXISTS (
+    SELECT 1 FROM lims.samples s WHERE s.name = 'PBMC Aliquot A'
+  );
+
+INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by)
+SELECT 'Serum Plate Control', 'fluid', 'PRJ-002', 'available', 'fluid', now() - interval '1 day', u.id
+FROM lims.users u
+WHERE u.email = 'alice@example.org'
+  AND NOT EXISTS (
+    SELECT 1 FROM lims.samples s WHERE s.name = 'Serum Plate Control'
+  );
+
+INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by)
+SELECT 'Neutralizing Panel B', 'cell', 'PRJ-003', 'available', 'cell', now() - interval '5 days', u.id
+FROM lims.users u
+WHERE u.email = 'bob@example.org'
+  AND NOT EXISTS (
+    SELECT 1 FROM lims.samples s WHERE s.name = 'Neutralizing Panel B'
+  );
+
+-- Demo labware inventory linked to storage
+WITH shelf AS (
+  SELECT ss.id
+  FROM lims.storage_sublocations ss
+  JOIN lims.storage_units su ON su.id = ss.unit_id
+  JOIN lims.storage_facilities sf ON sf.id = su.facility_id
+  WHERE sf.name = 'Main Lab' AND su.name = 'Freezer 1' AND ss.name = 'Shelf 1'
+  LIMIT 1
+),
+admin_user AS (
+  SELECT id FROM lims.users WHERE email = 'admin@example.org' LIMIT 1
+)
+INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, expected_disposal_at, current_storage_sublocation_id, metadata, created_by)
+SELECT lt.id, 'TUBE-0001', 'PBMC Aliquot Tube', 'in_use', true, now() + interval '7 days', shelf.id, jsonb_build_object('contents', 'PBMC aliquot'), admin_user.id
+FROM lims.labware_types lt, shelf, admin_user
+WHERE lt.name = '2mL Tube'
+  AND NOT EXISTS (SELECT 1 FROM lims.labware lw WHERE lw.barcode = 'TUBE-0001');
+
+WITH shelf AS (
+  SELECT ss.id
+  FROM lims.storage_sublocations ss
+  JOIN lims.storage_units su ON su.id = ss.unit_id
+  JOIN lims.storage_facilities sf ON sf.id = su.facility_id
+  WHERE sf.name = 'Main Lab' AND su.name = 'Freezer 1' AND ss.name = 'Shelf 1'
+  LIMIT 1
+),
+admin_user AS (
+  SELECT id FROM lims.users WHERE email = 'admin@example.org' LIMIT 1
+)
+INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, current_storage_sublocation_id, metadata, created_by)
+SELECT lt.id, 'PLATE-0001', 'Serum Control Plate', 'in_use', false, shelf.id, jsonb_build_object('assay', 'ELISA'), admin_user.id
+FROM lims.labware_types lt, shelf, admin_user
+WHERE lt.name = '96-Well Plate'
+  AND NOT EXISTS (SELECT 1 FROM lims.labware lw WHERE lw.barcode = 'PLATE-0001');
+
+WITH shelf AS (
+  SELECT ss.id
+  FROM lims.storage_sublocations ss
+  JOIN lims.storage_units su ON su.id = ss.unit_id
+  JOIN lims.storage_facilities sf ON sf.id = su.facility_id
+  WHERE sf.name = 'Main Lab' AND su.name = 'Freezer 1' AND ss.name = 'Shelf 1'
+  LIMIT 1
+),
+admin_user AS (
+  SELECT id FROM lims.users WHERE email = 'admin@example.org' LIMIT 1
+)
+INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, expected_disposal_at, current_storage_sublocation_id, metadata, created_by)
+SELECT lt.id, 'TUBE-0002', 'Neutralizing Panel Tube', 'in_use', true, now() + interval '5 days', shelf.id, jsonb_build_object('contents', 'Neutralizing panel replicate'), admin_user.id
+FROM lims.labware_types lt, shelf, admin_user
+WHERE lt.name = '2mL Tube'
+  AND NOT EXISTS (SELECT 1 FROM lims.labware lw WHERE lw.barcode = 'TUBE-0002');
+
+-- Sample placements within the labware
+INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+SELECT s.id, lw.id, NULL, now() - interval '2 days', admin.id, 1.5, 'mL'
+FROM lims.samples s
+JOIN lims.labware lw ON lw.barcode = 'TUBE-0001'
+JOIN lims.users admin ON admin.email = 'admin@example.org'
+WHERE s.name = 'PBMC Aliquot A'
+ON CONFLICT (sample_id, labware_id, labware_position_id) DO NOTHING;
+
+INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+SELECT lw.id, pos.label, pos.row_index, pos.column_index
+FROM lims.labware lw
+JOIN (
+  SELECT 'A1'::text AS label, 1 AS row_index, 1 AS column_index
+  UNION ALL
+  SELECT 'A2', 1, 2
+) pos ON true
+WHERE lw.barcode = 'PLATE-0001'
+ON CONFLICT (labware_id, position_label) DO NOTHING;
+
+INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+SELECT s.id, lw.id, lp.id, now() - interval '12 hours', admin.id, 50, 'µL'
+FROM lims.samples s
+JOIN lims.labware lw ON lw.barcode = 'PLATE-0001'
+JOIN lims.labware_positions lp ON lp.labware_id = lw.id AND lp.position_label = 'A1'
+JOIN lims.users admin ON admin.email = 'admin@example.org'
+WHERE s.name = 'Serum Tube A'
+ON CONFLICT (sample_id, labware_id, labware_position_id) DO NOTHING;
+
+INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+SELECT s.id, lw.id, lp.id, now() - interval '10 hours', admin.id, 45, 'µL'
+FROM lims.samples s
+JOIN lims.labware lw ON lw.barcode = 'PLATE-0001'
+JOIN lims.labware_positions lp ON lp.labware_id = lw.id AND lp.position_label = 'A2'
+JOIN lims.users admin ON admin.email = 'admin@example.org'
+WHERE s.name = 'Serum Plate Control'
+ON CONFLICT (sample_id, labware_id, labware_position_id) DO NOTHING;
+
+INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+SELECT s.id, lw.id, NULL, now() - interval '4 days', admin.id, 1.2, 'mL'
+FROM lims.samples s
+JOIN lims.labware lw ON lw.barcode = 'TUBE-0002'
+JOIN lims.users admin ON admin.email = 'admin@example.org'
+WHERE s.name = 'Neutralizing Panel B'
+ON CONFLICT (sample_id, labware_id, labware_position_id) DO NOTHING;
+
+-- Keep samples pointing to the active labware
+UPDATE lims.samples s
+SET current_labware_id = lw.id
+FROM lims.labware lw
+WHERE s.name = 'PBMC Aliquot A' AND lw.barcode = 'TUBE-0001';
+
+UPDATE lims.samples s
+SET current_labware_id = lw.id
+FROM lims.labware lw
+WHERE s.name = 'Serum Plate Control' AND lw.barcode = 'PLATE-0001';
+
+UPDATE lims.samples s
+SET current_labware_id = lw.id
+FROM lims.labware lw
+WHERE s.name = 'Neutralizing Panel B' AND lw.barcode = 'TUBE-0002';
+
 -- Assign seeded samples to statuses/types
 UPDATE lims.samples SET sample_status = 'available' WHERE sample_status IS NULL;
 UPDATE lims.samples SET sample_type_code = 'cell' WHERE sample_type_code IS NULL AND sample_type = 'cell';
 UPDATE lims.samples SET sample_type_code = 'fluid' WHERE sample_type_code IS NULL AND sample_type = 'fluid';
+
+-- Inventory examples for UI table
+WITH shelf AS (
+  SELECT ss.id
+  FROM lims.storage_sublocations ss
+  JOIN lims.storage_units su ON su.id = ss.unit_id
+  JOIN lims.storage_facilities sf ON sf.id = su.facility_id
+  WHERE sf.name = 'Main Lab' AND su.name = 'Freezer 1' AND ss.name = 'Shelf 1'
+  LIMIT 1
+),
+admin_user AS (
+  SELECT id FROM lims.users WHERE email = 'admin@example.org' LIMIT 1
+)
+INSERT INTO lims.inventory_items(barcode, name, description, catalogue_number, lot_number, quantity, unit, minimum_quantity, storage_requirements, expires_at, storage_sublocation_id, metadata, created_by)
+SELECT 'INV-CRYO-001', 'Cryovial Labels', 'Self-adhesive cryogenic labels', 'LBL-CRYO', 'LOT-117', 24, 'roll', 10, 'Store at room temperature', now() + interval '8 months', shelf.id, jsonb_build_object('vendor', 'LabStuff Inc.'), admin_user.id
+FROM shelf, admin_user
+WHERE NOT EXISTS (SELECT 1 FROM lims.inventory_items ii WHERE ii.barcode = 'INV-CRYO-001');
+
+WITH shelf AS (
+  SELECT ss.id
+  FROM lims.storage_sublocations ss
+  JOIN lims.storage_units su ON su.id = ss.unit_id
+  JOIN lims.storage_facilities sf ON sf.id = su.facility_id
+  WHERE sf.name = 'Main Lab' AND su.name = 'Freezer 1' AND ss.name = 'Shelf 1'
+  LIMIT 1
+),
+admin_user AS (
+  SELECT id FROM lims.users WHERE email = 'admin@example.org' LIMIT 1
+)
+INSERT INTO lims.inventory_items(barcode, name, description, catalogue_number, lot_number, quantity, unit, minimum_quantity, storage_requirements, expires_at, storage_sublocation_id, metadata, created_by)
+SELECT 'INV-REAG-042', 'ELISA Wash Buffer', 'Ready-to-use buffer concentrate', 'ELISA-WASH', 'LOT-42B', 1.5, 'L', 2, 'Keep refrigerated', now() + interval '2 months', shelf.id, jsonb_build_object('hazard', 'Irritant'), admin_user.id
+FROM shelf, admin_user
+WHERE NOT EXISTS (SELECT 1 FROM lims.inventory_items ii WHERE ii.barcode = 'INV-REAG-042');
 
 -------------------------------------------------------------------------------
 -- migrate:down
