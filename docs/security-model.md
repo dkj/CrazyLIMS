@@ -43,6 +43,15 @@ PostgREST executes `lims.pre_request` before each request. The function inspects
 
 `lims.current_roles()` and `lims.current_user_id()` helper functions fall back to parsing the JWT directly, so explicit `set_config` calls act as a fast path and support impersonation scripts.
 
+#### Role Resolution Sources
+
+Sessions can inherit privileges from two places:
+
+1. **JWT Claims** – Tokens may carry `role`/`roles` arrays. `lims.pre_request` trusts these claims and sets the database role immediately (used heavily by service integrations and API tokens).
+2. **Database Assignments** – If claims omit role data, `lims.current_user_id()` resolves the actor, and `lims.has_role()` queries `lims.user_roles` to determine memberships. Humans typically rely on this path to ensure role changes take effect without token regeneration.
+
+This dual approach allows long-lived automation tokens to bake in explicit roles while human accounts remain centrally managed inside the database.
+
 ### PostGraphile Flow
 
 PostGraphile now runs through `ops/postgraphile/server.js`, which:
