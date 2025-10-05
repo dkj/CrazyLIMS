@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { PersonaSelector } from "./components/PersonaSelector";
 import { DataTable } from "./components/DataTable";
-import type { SampleOverviewRow, LabwareContentRow, InventoryStatusRow } from "./types";
+import type {
+  SampleOverviewRow,
+  LabwareContentRow,
+  InventoryStatusRow,
+  UserRow
+} from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
 const API_BASE = POSTGREST_URL.replace(/\/$/, "");
@@ -116,6 +121,7 @@ export default function App() {
   const sampleView = useGet<SampleOverviewRow>("/v_sample_overview", token);
   const labwareView = useGet<LabwareContentRow>("/v_labware_contents", token);
   const inventoryView = useGet<InventoryStatusRow>("/v_inventory_status", token);
+  const usersView = useGet<UserRow>("/users", token);
 
   const sampleColumns = useMemo(
     () => [
@@ -154,6 +160,16 @@ export default function App() {
     []
   );
 
+  const userColumns = useMemo(
+    () => [
+      { key: "email", label: "Email" },
+      { key: "full_name", label: "Name" },
+      { key: "default_role", label: "Default Role" },
+      { key: "is_service_account", label: "Service Account" }
+    ],
+    []
+  );
+
   return (
     <div className="app">
       <header className="app__header">
@@ -180,6 +196,17 @@ export default function App() {
                 loading={sampleView.loading}
                 error={sampleView.error}
                 emptyMessage="No samples available for this persona."
+              />
+            </section>
+
+            <section>
+              <h2>Users</h2>
+              <DataTable
+                columns={userColumns}
+                rows={usersView.data}
+                loading={usersView.loading}
+                error={usersView.error}
+                emptyMessage="No user records visible."
               />
             </section>
 

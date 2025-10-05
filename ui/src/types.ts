@@ -33,3 +33,11 @@ export interface InventoryStatusRow {
   expires_at: string | null;
   storage_sublocation_id: string | null;
 }
+
+export interface UserRow {
+  id: string;
+  email: string;
+  full_name: string;
+  default_role: string | null;
+  is_service_account: boolean;
+}
