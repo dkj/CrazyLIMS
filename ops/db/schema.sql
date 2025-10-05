@@ -930,7 +930,7 @@ CREATE VIEW lims.v_audit_recent_activity AS
 -- Name: v_inventory_status; Type: VIEW; Schema: lims; Owner: -
 --
 
-CREATE VIEW lims.v_inventory_status AS
+CREATE VIEW lims.v_inventory_status WITH (security_invoker='true') AS
  SELECT id,
     name,
     barcode,
@@ -947,7 +947,7 @@ CREATE VIEW lims.v_inventory_status AS
 -- Name: v_labware_contents; Type: VIEW; Schema: lims; Owner: -
 --
 
-CREATE VIEW lims.v_labware_contents AS
+CREATE VIEW lims.v_labware_contents WITH (security_invoker='true') AS
  SELECT lw.id AS labware_id,
     lw.barcode,
     lw.display_name,
@@ -968,7 +968,7 @@ CREATE VIEW lims.v_labware_contents AS
 -- Name: v_sample_overview; Type: VIEW; Schema: lims; Owner: -
 --
 
-CREATE VIEW lims.v_sample_overview AS
+CREATE VIEW lims.v_sample_overview WITH (security_invoker='true') AS
  SELECT s.id,
     s.name,
     s.sample_type_code,
@@ -982,7 +982,7 @@ CREATE VIEW lims.v_sample_overview AS
           WHERE (sd.parent_sample_id = s.id)) AS derivatives
    FROM ((lims.samples s
      LEFT JOIN lims.labware lab ON ((lab.id = s.current_labware_id)))
-     LEFT JOIN LATERAL ( SELECT string_agg(((((COALESCE(sf.name, ''::text) || '/'::text) || COALESCE(su.name, ''::text)) || '/'::text) || COALESCE(ss.name, ''::text)), ' → '::text) AS path_text
+     LEFT JOIN LATERAL ( SELECT string_agg(format('%s/%s/%s'::text, COALESCE(sf.name, ''::text), COALESCE(su.name, ''::text), COALESCE(ss.name, ''::text)), ' → '::text) AS path_text
            FROM ((lims.storage_sublocations ss
              LEFT JOIN lims.storage_units su ON ((su.id = ss.unit_id)))
              LEFT JOIN lims.storage_facilities sf ON ((sf.id = su.facility_id)))
@@ -993,7 +993,7 @@ CREATE VIEW lims.v_sample_overview AS
 -- Name: v_storage_dashboard; Type: VIEW; Schema: lims; Owner: -
 --
 
-CREATE VIEW lims.v_storage_dashboard AS
+CREATE VIEW lims.v_storage_dashboard WITH (security_invoker='true') AS
  SELECT sf.name AS facility,
     su.name AS unit,
     su.storage_type,

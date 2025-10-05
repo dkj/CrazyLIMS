@@ -38,6 +38,13 @@ The `dev` service defined in `docker-compose.yml` is used by the devcontainer; w
 
 See `Makefile` for additional helper targets (logs, psql shell, etc.).
 
+## Migration Workflow
+
+- Generate new migrations with `make db/new name=...` (dbmate under the hood) instead of editing historical files.
+- Keep migration bodies idempotent (`ON CONFLICT DO NOTHING`, `IF NOT EXISTS`) so `make db/reset` and CI replays remain safe.
+- For follow-up adjustments, add a new migration that alters/drops/recreates objects; avoid mutating older files that may already be deployed.
+- After creating a migration, run `make db/migrate` (or `make db/reset`) locally to ensure it applies cleanly before committing.
+
 ## Database Layout (Phase 1)
 
 Schemas/tables created so far include:
