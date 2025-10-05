@@ -59,6 +59,59 @@ COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UU
 
 
 --
+-- Name: can_access_inventory_item(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_inventory_item(p_inventory_item_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_inventory_item_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  RETURN lims.has_role('app_admin') OR lims.has_role('app_operator');
+END;
+$$;
+
+
+--
+-- Name: can_access_labware(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_labware(p_labware_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_labware_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.samples s
+    WHERE s.current_labware_id = p_labware_id
+      AND lims.can_access_project(s.project_id)
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM lims.sample_labware_assignments sla
+    JOIN lims.samples s ON s.id = sla.sample_id
+    WHERE sla.labware_id = p_labware_id
+      AND sla.released_at IS NULL
+      AND lims.can_access_project(s.project_id)
+  );
+END;
+$$;
+
+
+--
 -- Name: can_access_project(uuid); Type: FUNCTION; Schema: lims; Owner: -
 --
 
@@ -80,6 +133,114 @@ BEGIN
     FROM lims.project_members pm
     WHERE pm.project_id = p_project_id
       AND pm.user_id = lims.current_user_id()
+  );
+END;
+$$;
+
+
+--
+-- Name: can_access_sample(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_sample(p_sample_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_sample_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.samples s
+    WHERE s.id = p_sample_id
+      AND lims.can_access_project(s.project_id)
+  );
+END;
+$$;
+
+
+--
+-- Name: can_access_storage_facility(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_storage_facility(p_facility_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_facility_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.storage_units su
+    WHERE su.facility_id = p_facility_id
+      AND lims.can_access_storage_unit(su.id)
+  );
+END;
+$$;
+
+
+--
+-- Name: can_access_storage_sublocation(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_storage_sublocation(p_sublocation_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_sublocation_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.labware lw
+    WHERE lw.current_storage_sublocation_id = p_sublocation_id
+      AND lims.can_access_labware(lw.id)
+  );
+END;
+$$;
+
+
+--
+-- Name: can_access_storage_unit(uuid); Type: FUNCTION; Schema: lims; Owner: -
+--
+
+CREATE FUNCTION lims.can_access_storage_unit(p_unit_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'lims'
+    AS $$
+BEGIN
+  IF p_unit_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF lims.has_role('app_admin') OR lims.has_role('app_operator') THEN
+    RETURN TRUE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM lims.storage_sublocations ss
+    WHERE ss.unit_id = p_unit_id
+      AND lims.can_access_storage_sublocation(ss.id)
   );
 END;
 $$;
@@ -1918,7 +2079,7 @@ CREATE POLICY p_custody_events_operator_all ON lims.custody_events TO app_operat
 -- Name: custody_events p_custody_events_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_custody_events_select_researcher ON lims.custody_events FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_custody_events_select_researcher ON lims.custody_events FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_sample(sample_id)));
 
 
 --
@@ -1936,10 +2097,10 @@ CREATE POLICY p_inventory_items_operator_all ON lims.inventory_items TO app_oper
 
 
 --
--- Name: inventory_items p_inventory_items_select_researcher; Type: POLICY; Schema: lims; Owner: -
+-- Name: inventory_items p_inventory_items_select_ops; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_inventory_items_select_researcher ON lims.inventory_items FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_inventory_items_select_ops ON lims.inventory_items FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text)));
 
 
 --
@@ -1957,10 +2118,10 @@ CREATE POLICY p_inventory_transactions_operator_all ON lims.inventory_transactio
 
 
 --
--- Name: inventory_transactions p_inventory_transactions_select_researcher; Type: POLICY; Schema: lims; Owner: -
+-- Name: inventory_transactions p_inventory_transactions_select_ops; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_inventory_transactions_select_researcher ON lims.inventory_transactions FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_inventory_transactions_select_ops ON lims.inventory_transactions FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text)));
 
 
 --
@@ -1988,7 +2149,7 @@ CREATE POLICY p_labware_location_history_operator_all ON lims.labware_location_h
 -- Name: labware_location_history p_labware_location_history_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_labware_location_history_select_researcher ON lims.labware_location_history FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_labware_location_history_select_researcher ON lims.labware_location_history FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_labware(labware_id)));
 
 
 --
@@ -2016,14 +2177,14 @@ CREATE POLICY p_labware_positions_operator_all ON lims.labware_positions TO app_
 -- Name: labware_positions p_labware_positions_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_labware_positions_select_researcher ON lims.labware_positions FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_labware_positions_select_researcher ON lims.labware_positions FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_labware(labware_id)));
 
 
 --
 -- Name: labware p_labware_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_labware_select_researcher ON lims.labware FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_labware_select_researcher ON lims.labware FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_labware(id)));
 
 
 --
@@ -2102,7 +2263,7 @@ CREATE POLICY p_sample_derivations_operator_all ON lims.sample_derivations TO ap
 -- Name: sample_derivations p_sample_derivations_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_sample_derivations_select_researcher ON lims.sample_derivations FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_sample_derivations_select_researcher ON lims.sample_derivations FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_sample(parent_sample_id) OR lims.can_access_sample(child_sample_id)));
 
 
 --
@@ -2123,7 +2284,7 @@ CREATE POLICY p_sample_labware_assign_operator_all ON lims.sample_labware_assign
 -- Name: sample_labware_assignments p_sample_labware_assign_select_researcher; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_sample_labware_assign_select_researcher ON lims.sample_labware_assignments FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_sample_labware_assign_select_researcher ON lims.sample_labware_assignments FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_sample(sample_id)));
 
 
 --
@@ -2221,7 +2382,7 @@ CREATE POLICY p_storage_facilities_admin_all ON lims.storage_facilities TO app_a
 -- Name: storage_facilities p_storage_facilities_select_auth; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_storage_facilities_select_auth ON lims.storage_facilities FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_storage_facilities_select_auth ON lims.storage_facilities FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_storage_facility(id)));
 
 
 --
@@ -2235,7 +2396,7 @@ CREATE POLICY p_storage_sublocations_admin_all ON lims.storage_sublocations TO a
 -- Name: storage_sublocations p_storage_sublocations_select_auth; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_storage_sublocations_select_auth ON lims.storage_sublocations FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_storage_sublocations_select_auth ON lims.storage_sublocations FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_storage_sublocation(id)));
 
 
 --
@@ -2249,7 +2410,7 @@ CREATE POLICY p_storage_units_admin_all ON lims.storage_units TO app_admin USING
 -- Name: storage_units p_storage_units_select_auth; Type: POLICY; Schema: lims; Owner: -
 --
 
-CREATE POLICY p_storage_units_select_auth ON lims.storage_units FOR SELECT TO app_auth USING (true);
+CREATE POLICY p_storage_units_select_auth ON lims.storage_units FOR SELECT TO app_auth USING ((lims.has_role('app_admin'::text) OR lims.has_role('app_operator'::text) OR lims.can_access_storage_unit(id)));
 
 
 --
@@ -2395,4 +2556,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20240513002000'),
     ('20240513003000'),
     ('20240513004000'),
-    ('20240513005000');
+    ('20240513005000'),
+    ('20240520010000');

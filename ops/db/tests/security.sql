@@ -154,6 +154,64 @@ $$;
 
 RESET ROLE;
 
+-- Custody events must remain in chronological order per sample
+DO $$
+DECLARE
+  out_of_order integer;
+BEGIN
+  SELECT count(*) INTO out_of_order
+  FROM (
+    SELECT sample_id,
+           performed_at,
+           lag(performed_at) OVER (PARTITION BY sample_id ORDER BY performed_at) AS prev_at
+    FROM lims.custody_events
+  ) ordered
+  WHERE prev_at IS NOT NULL AND performed_at < prev_at;
+
+  IF out_of_order > 0 THEN
+    RAISE EXCEPTION 'Custody events detected out-of-order timestamps';
+  END IF;
+END;
+$$;
+
+-- Active labware occupancy may not exceed the declared capacity
+DO $$
+DECLARE
+  over_capacity integer;
+BEGIN
+  SELECT count(*) INTO over_capacity
+  FROM (
+    SELECT lw.id,
+           lt.capacity,
+           count(*) FILTER (WHERE sla.released_at IS NULL) AS active_assignments
+    FROM lims.labware lw
+    JOIN lims.labware_types lt ON lt.id = lw.labware_type_id
+    LEFT JOIN lims.sample_labware_assignments sla ON sla.labware_id = lw.id
+    GROUP BY lw.id, lt.capacity
+  ) occupancy
+  WHERE occupancy.capacity IS NOT NULL
+    AND occupancy.capacity >= 0
+    AND occupancy.active_assignments > occupancy.capacity;
+
+  IF over_capacity > 0 THEN
+    RAISE EXCEPTION 'Labware exceeded configured capacity';
+  END IF;
+END;
+$$;
+
+-- Inventory balances must remain non-negative in all records
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM lims.inventory_items WHERE quantity < 0) THEN
+    RAISE EXCEPTION 'Inventory item quantity dropped below zero';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM lims.inventory_transactions WHERE resulting_quantity IS NOT NULL AND resulting_quantity < 0) THEN
+    RAISE EXCEPTION 'Inventory transaction recorded negative resulting quantity';
+  END IF;
+END;
+$$;
+
 -- Second researcher should only see their own data
 SET ROLE app_researcher;
 SELECT set_config('lims.current_roles', 'app_researcher', false);
