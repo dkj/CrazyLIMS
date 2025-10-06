@@ -54,12 +54,19 @@
   - `v_labware_contents` listing samples per labware with occupancy metadata (volumes, well positions).
   - `v_storage_dashboard` summarizing storage unit utilization and environmental alerts.
   - `v_inventory_status` showing stock levels, thresholds, upcoming expirations, and reorder suggestions.
+- Publish lineage-focused APIs: `v_sample_lineage` exposing ancestor/descendant graphs, `v_sample_labware_history` tracing container assignments, and RPCs such as `get_sample_network(sample_id)` that return graph-friendly payloads for UI clients.
 - Provide RPC/GraphQL mutations for key workflows:
   - `create_aliquot(parent_sample_id, labware_id, …)` ensuring lineage and labware capacity rules.
   - `transfer_labware(labware_id, destination_storage_id, reason)` with custody logging.
   - `record_inventory_transaction(item_id, delta, reason)` enforcing non-negative balance and capturing metadata.
 - Support barcode scanning endpoints (e.g., look up labware by barcode, check sample history) optimized for mobile/LIMS UI integrations.
 - Update API contracts to expose filtering on labware barcode, storage path, inventory status, and allow optimistic concurrency via timestamp columns.
+
+## UI & Data Exploration Enablement
+- Extend the web UI with a Sample Provenance Explorer that leverages lineage APIs to visualize ancestors and descendants, surface associated labware, and display current storage locations with breadcrumb navigation.
+- Add Labware & Location Explorer views allowing users to traverse facilities → units → sublocations, inspect labware contents, and jump directly to related sample detail pages.
+- Ensure UI components respect RLS constraints by consuming the new helper APIs and masking inaccessible samples, labware, or storage nodes.
+- Provide UX documentation and mockups illustrating traversal flows (search by sample, jump by barcode, browse by location) to guide implementation and stakeholder review.
 
 ## Testing Strategy
 - Expand SQL regression suite:

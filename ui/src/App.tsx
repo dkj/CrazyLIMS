@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { PersonaSelector } from "./components/PersonaSelector";
 import { DataTable } from "./components/DataTable";
+import { SampleProvenanceExplorer } from "./components/SampleProvenanceExplorer";
+import { StorageExplorer } from "./components/StorageExplorer";
 import type {
   SampleOverviewRow,
   LabwareContentRow,
   InventoryStatusRow,
   UserRow,
-  ProjectAccessRow
+  ProjectAccessRow,
+  SampleLineageRow,
+  LabwareInventoryRow,
+  StorageTreeRow
 } from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
@@ -173,6 +178,30 @@ export default function App() {
     "/v_project_access_overview",
     token
   );
+  const sampleLineageView = useGet<SampleLineageRow>(
+    "/v_sample_lineage",
+    token
+  );
+  const labwareInventoryView = useGet<LabwareInventoryRow>(
+    "/v_labware_inventory",
+    token
+  );
+  const storageTreeView = useGet<StorageTreeRow>("/v_storage_tree", token);
+
+  const [focusedLabwareId, setFocusedLabwareId] = useState<string | null>(null);
+  const [focusedSampleId, setFocusedSampleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFocusedLabwareId(null);
+    setFocusedSampleId(null);
+  }, [token]);
+
+  useEffect(() => {
+    if (!focusedSampleId) return;
+    if (!sampleView.data.some((row) => row.id === focusedSampleId)) {
+      setFocusedSampleId(null);
+    }
+  }, [focusedSampleId, sampleView.data]);
 
   const sampleColumns = useMemo(
     () => [
@@ -296,6 +325,33 @@ export default function App() {
             </section>
 
             <section>
+              <h2>Sample Provenance Explorer</h2>
+              <p className="section-subtitle">
+                Traverse sample lineage and jump straight to labware holding each
+                material.
+              </p>
+              <SampleProvenanceExplorer
+                samples={sampleView.data}
+                lineage={sampleLineageView.data}
+                labwareInventory={labwareInventoryView.data}
+                loading={
+                  sampleView.loading ||
+                  sampleLineageView.loading ||
+                  labwareInventoryView.loading
+                }
+                error={
+                  sampleView.error ??
+                  sampleLineageView.error ??
+                  labwareInventoryView.error
+                }
+                onSelectLabware={setFocusedLabwareId}
+                selectedLabwareId={focusedLabwareId}
+                focusedSampleId={focusedSampleId}
+                onSampleFocusChange={(sampleId) => setFocusedSampleId(sampleId)}
+              />
+            </section>
+
+            <section>
               <h2>Users</h2>
               <DataTable
                 columns={userColumns}
@@ -314,6 +370,25 @@ export default function App() {
                 loading={labwareView.loading}
                 error={labwareView.error}
                 emptyMessage="No labware records visible."
+              />
+            </section>
+
+            <section>
+              <h2>Labware & Storage Explorer</h2>
+              <p className="section-subtitle">
+                Inspect storage hierarchy, locate labware, and review active sample
+                assignments.
+              </p>
+              <StorageExplorer
+                storageTree={storageTreeView.data}
+                labwareInventory={labwareInventoryView.data}
+                loading={
+                  storageTreeView.loading || labwareInventoryView.loading
+                }
+                error={storageTreeView.error ?? labwareInventoryView.error}
+                onSelectLabware={setFocusedLabwareId}
+                selectedLabwareId={focusedLabwareId}
+                onSelectSample={(sampleId) => setFocusedSampleId(sampleId)}
               />
             </section>
 
