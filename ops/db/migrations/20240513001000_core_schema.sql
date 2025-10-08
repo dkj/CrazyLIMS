@@ -734,7 +734,7 @@ FROM (
       (SELECT id FROM lims.users WHERE email = 'alice@example.org')
     ),
     (
-      'Serum Tube A',
+      'Participant 001 Blood Draw',
       'fluid',
       'PRJ-002',
       (SELECT id FROM lims.users WHERE email = 'alice@example.org')
@@ -748,7 +748,7 @@ WHERE NOT EXISTS (
 );
 
 -- migrate:down
-DELETE FROM lims.samples WHERE name IN ('PBMC Batch 001', 'Serum Tube A');
+DELETE FROM lims.samples WHERE name IN ('PBMC Batch 001', 'Participant 001 Blood Draw');
 DELETE FROM lims.user_roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher');
 DELETE FROM lims.users WHERE email IN ('admin@example.org', 'operator@example.org', 'alice@example.org', 'bob@example.org');
 DELETE FROM lims.roles WHERE role_name IN ('app_admin', 'app_operator', 'app_researcher', 'app_external', 'app_automation');

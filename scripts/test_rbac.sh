@@ -119,7 +119,7 @@ main() {
   request_postgrest "operator" "operator.jwt" "200" "GET" "/users" '' 'length > 0'
   request_postgrest "researcher" "researcher.jwt" "200" "GET" "/users" '' 'length <= 1 and (length == 0 or .[0].email == "alice@example.org")'
   request_postgrest "admin" "admin.jwt" "200" "GET" "/v_sample_overview" '' 'length > 0'
-  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/v_sample_overview?select=name" '' '([.[].name] | unique | all(.[]; (. == "GraphQL Smoke" or . == "PBMC Aliquot A" or . == "PBMC Batch 001" or . == "Serum Plate Control" or . == "Serum Tube A"))) and ([.[].name] | index("Neutralizing Panel B") | not)'
+  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/v_sample_overview?select=name" '' '([.[].name] | unique | all(.[]; (. == "GraphQL Smoke" or . == "PBMC Aliquot A" or . == "PBMC Batch 001" or . == "PBMC Batch 001 - Aliquot A" or . == "PBMC Batch 001 - Aliquot A - Cryovial 1" or . == "PBMC Batch 001 - Aliquot B" or . == "Serum QC Control Sample" or . == "Participant 001 Blood Draw" or . == "Participant 001 Blood Draw - Buffy Coat Fraction" or . == "Participant 001 Blood Draw - Plasma Fraction" or . == "Participant 001 Blood Draw - Plasma Fraction - LCMS Prep"))) and ([.[].name] | index("Neutralizing Panel B") | not)'
   request_postgrest "researcher-bob" "researcher_bob.jwt" "200" "GET" "/v_sample_overview?select=name" '' 'map(.name) == ["Neutralizing Panel B"]'
   request_postgrest "researcher-labware" "researcher.jwt" "200" "GET" "/labware?select=barcode" '' 'map(.barcode) | sort == ["PLATE-0001","TUBE-0001"]'
   request_postgrest "researcher-bob-labware" "researcher_bob.jwt" "200" "GET" "/labware?select=barcode" '' 'map(.barcode) == ["TUBE-0002"]'

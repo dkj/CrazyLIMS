@@ -124,7 +124,7 @@ WITH parent AS (
     s.project_code
   FROM lims.samples s
   LEFT JOIN lims.users creator ON creator.email = 'alice@example.org'
-  WHERE s.name = 'Serum Tube A'
+  WHERE s.name = 'Participant 001 Blood Draw'
   LIMIT 1
 ),
 seed_samples AS (
@@ -138,8 +138,8 @@ seed_samples AS (
   FROM parent,
   LATERAL (
     VALUES
-      ('Serum Tube A - Plasma', 'fraction_plasma'),
-      ('Serum Tube A - Buffy Coat', 'fraction_buffy_coat')
+      ('Participant 001 Blood Draw - Plasma Fraction', 'fraction_plasma'),
+      ('Participant 001 Blood Draw - Buffy Coat Fraction', 'fraction_buffy_coat')
   ) AS seed(name, sample_type)
 )
 INSERT INTO lims.samples (name, sample_type, project_code, created_by)
@@ -155,7 +155,7 @@ WITH parent AS (
     COALESCE(s.created_by, creator.id) AS created_by
   FROM lims.samples s
   LEFT JOIN lims.users creator ON creator.email = 'alice@example.org'
-  WHERE s.name = 'Serum Tube A'
+  WHERE s.name = 'Participant 001 Blood Draw'
   LIMIT 1
 ),
 children AS (
@@ -166,8 +166,8 @@ children AS (
     parent.created_by
   FROM parent
   JOIN lims.samples child ON child.name IN (
-    'Serum Tube A - Plasma',
-    'Serum Tube A - Buffy Coat'
+    'Participant 001 Blood Draw - Plasma Fraction',
+    'Participant 001 Blood Draw - Buffy Coat Fraction'
   )
 )
 INSERT INTO lims.sample_derivations (parent_sample_id, child_sample_id, method, created_by)
@@ -189,7 +189,7 @@ WITH parent AS (
     s.project_code
   FROM lims.samples s
   LEFT JOIN lims.users creator ON creator.email = 'alice@example.org'
-  WHERE s.name = 'Serum Tube A - Plasma'
+  WHERE s.name = 'Participant 001 Blood Draw - Plasma Fraction'
   LIMIT 1
 ),
 seed_sample AS (
@@ -197,7 +197,7 @@ seed_sample AS (
     parent.id AS parent_id,
     parent.created_by,
     parent.project_code,
-    'Serum Tube A - Plasma - LCMS Prep'::text AS name,
+    'Participant 001 Blood Draw - Plasma Fraction - LCMS Prep'::text AS name,
     'analysis_prep'::text AS sample_type,
     'seed:prep'::text AS method
   FROM parent
@@ -215,7 +215,7 @@ WITH parent AS (
     COALESCE(s.created_by, creator.id) AS created_by
   FROM lims.samples s
   LEFT JOIN lims.users creator ON creator.email = 'alice@example.org'
-  WHERE s.name = 'Serum Tube A - Plasma'
+  WHERE s.name = 'Participant 001 Blood Draw - Plasma Fraction'
   LIMIT 1
 ),
 child AS (
@@ -224,7 +224,7 @@ child AS (
     parent.created_by,
     sample.id AS child_id
   FROM parent
-  JOIN lims.samples sample ON sample.name = 'Serum Tube A - Plasma - LCMS Prep'
+  JOIN lims.samples sample ON sample.name = 'Participant 001 Blood Draw - Plasma Fraction - LCMS Prep'
 )
 INSERT INTO lims.sample_derivations (parent_sample_id, child_sample_id, method, created_by)
 SELECT child.parent_id, child.child_id, 'seed:prep', child.created_by
@@ -244,9 +244,9 @@ WITH target AS (
     'PBMC Batch 001 - Aliquot A - Cryovial 1',
     'PBMC Batch 001 - Aliquot A',
     'PBMC Batch 001 - Aliquot B',
-    'Serum Tube A - Plasma - LCMS Prep',
-    'Serum Tube A - Plasma',
-    'Serum Tube A - Buffy Coat'
+    'Participant 001 Blood Draw - Plasma Fraction - LCMS Prep',
+    'Participant 001 Blood Draw - Plasma Fraction',
+    'Participant 001 Blood Draw - Buffy Coat Fraction'
   )
 )
 DELETE FROM lims.sample_derivations

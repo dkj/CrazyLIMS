@@ -234,7 +234,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM lims.samples
-    WHERE name IN ('PBMC Batch 001', 'Serum Plate Control')
+    WHERE name IN ('PBMC Batch 001', 'Serum QC Control Sample')
   ) THEN
     RAISE EXCEPTION 'Bob should not see Alice samples';
   END IF;

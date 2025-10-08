@@ -462,7 +462,7 @@ DECLARE
   sample_pbmc_aliquot uuid;
   sample_serum_control uuid;
   sample_neutralizing uuid;
-  sample_serum_tube uuid;
+  sample_blood_draw uuid;
   sample_pbmc_batch uuid;
   labware_tube_one uuid;
   labware_tube_two uuid;
@@ -481,9 +481,9 @@ BEGIN
       VALUES ('PBMC Aliquot A', 'cell', 'PRJ-001', 'available', 'cell', now() - interval '3 days', alice_id);
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Serum Plate Control') THEN
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Serum QC Control Sample') THEN
       INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by)
-      VALUES ('Serum Plate Control', 'fluid', 'PRJ-002', 'available', 'fluid', now() - interval '1 day', alice_id);
+      VALUES ('Serum QC Control Sample', 'fluid', 'PRJ-002', 'available', 'fluid', now() - interval '1 day', alice_id);
     END IF;
   END IF;
 
@@ -495,9 +495,9 @@ BEGIN
   END IF;
 
   SELECT id INTO sample_pbmc_aliquot FROM lims.samples WHERE name = 'PBMC Aliquot A';
-  SELECT id INTO sample_serum_control FROM lims.samples WHERE name = 'Serum Plate Control';
+  SELECT id INTO sample_serum_control FROM lims.samples WHERE name = 'Serum QC Control Sample';
   SELECT id INTO sample_neutralizing FROM lims.samples WHERE name = 'Neutralizing Panel B';
-  SELECT id INTO sample_serum_tube FROM lims.samples WHERE name = 'Serum Tube A';
+  SELECT id INTO sample_blood_draw FROM lims.samples WHERE name = 'Participant 001 Blood Draw';
   SELECT id INTO sample_pbmc_batch FROM lims.samples WHERE name = 'PBMC Batch 001';
 
   IF shelf_id IS NULL THEN
@@ -564,14 +564,14 @@ BEGIN
       AND current_labware_id IS DISTINCT FROM labware_tube_one;
   END IF;
 
-  IF labware_plate IS NOT NULL AND sample_serum_tube IS NOT NULL AND pos_a1 IS NOT NULL THEN
+  IF labware_plate IS NOT NULL AND sample_blood_draw IS NOT NULL AND pos_a1 IS NOT NULL THEN
     IF NOT EXISTS (
       SELECT 1
       FROM lims.sample_labware_assignments
-      WHERE sample_id = sample_serum_tube AND labware_id = labware_plate AND labware_position_id = pos_a1
+      WHERE sample_id = sample_blood_draw AND labware_id = labware_plate AND labware_position_id = pos_a1
     ) THEN
       INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
-      VALUES (sample_serum_tube, labware_plate, pos_a1, now() - interval '12 hours', admin_id, 50, 'µL');
+      VALUES (sample_blood_draw, labware_plate, pos_a1, now() - interval '12 hours', admin_id, 50, 'µL');
     END IF;
   END IF;
 
