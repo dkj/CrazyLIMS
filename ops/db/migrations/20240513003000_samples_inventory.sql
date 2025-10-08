@@ -29,7 +29,9 @@ VALUES
   ('cell', 'Cellular sample'),
   ('fluid', 'Fluid sample'),
   ('dna', 'DNA sample'),
-  ('rna', 'RNA sample')
+  ('rna', 'RNA sample'),
+  ('library', 'Sequencing library'),
+  ('pooled_library', 'Pooled sequencing library')
 ON CONFLICT (sample_type_code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS lims.custody_event_types (
@@ -464,11 +466,40 @@ DECLARE
   sample_neutralizing uuid;
   sample_blood_draw uuid;
   sample_pbmc_batch uuid;
+  sample_dna_batch1_101 uuid;
+  sample_dna_batch1_102 uuid;
+  sample_dna_batch1_103 uuid;
+  sample_dna_batch2_201 uuid;
+  sample_dna_batch2_202 uuid;
+  sample_dna_batch2_203 uuid;
+  sample_library_batch1_101 uuid;
+  sample_library_batch1_102 uuid;
+  sample_library_batch1_103 uuid;
+  sample_library_batch2_201 uuid;
+  sample_library_batch2_202 uuid;
+  sample_library_batch2_203 uuid;
+  sample_sequencing_pool uuid;
   labware_tube_one uuid;
   labware_tube_two uuid;
   labware_plate uuid;
+  labware_dna_plate_one uuid;
+  labware_dna_plate_two uuid;
+  labware_library_plate uuid;
+  labware_pool_vessel uuid;
   pos_a1 uuid;
   pos_a2 uuid;
+  dna_plate_one_a1 uuid;
+  dna_plate_one_a2 uuid;
+  dna_plate_one_a3 uuid;
+  dna_plate_two_a1 uuid;
+  dna_plate_two_a2 uuid;
+  dna_plate_two_a3 uuid;
+  library_plate_a1 uuid;
+  library_plate_a2 uuid;
+  library_plate_a3 uuid;
+  library_plate_b1 uuid;
+  library_plate_b2 uuid;
+  library_plate_b3 uuid;
 BEGIN
   IF admin_id IS NULL THEN
     RAISE NOTICE 'Skipping seed data: admin user missing.';
@@ -485,6 +516,71 @@ BEGIN
       INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by)
       VALUES ('Serum QC Control Sample', 'fluid', 'PRJ-002', 'available', 'fluid', now() - interval '1 day', alice_id);
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 101') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 001 - Donor 101', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '20 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 102') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 001 - Donor 102', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '19 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 103') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 001 - Donor 103', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '19 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 201') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 002 - Donor 201', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '18 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 202') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 002 - Donor 202', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '18 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 203') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('DNA Intake Batch 002 - Donor 203', 'dna', 'PRJ-002', 'available', 'dna', now() - interval '17 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 101') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 001 - Donor 101', 'library', 'PRJ-002', 'available', 'library', now() - interval '8 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 102') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 001 - Donor 102', 'library', 'PRJ-002', 'available', 'library', now() - interval '7 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 103') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 001 - Donor 103', 'library', 'PRJ-002', 'available', 'library', now() - interval '7 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 201') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 002 - Donor 201', 'library', 'PRJ-002', 'available', 'library', now() - interval '6 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 202') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 002 - Donor 202', 'library', 'PRJ-002', 'available', 'library', now() - interval '6 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 203') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Indexed Library Batch 002 - Donor 203', 'library', 'PRJ-002', 'available', 'library', now() - interval '5 hours', alice_id, alice_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.samples WHERE name = 'Sequencing Pool Run 001') THEN
+      INSERT INTO lims.samples(name, sample_type, project_code, sample_status, sample_type_code, collected_at, created_by, collected_by)
+      VALUES ('Sequencing Pool Run 001', 'pooled_library', 'PRJ-002', 'available', 'pooled_library', now() - interval '2 hours', alice_id, alice_id);
+    END IF;
   END IF;
 
   IF bob_id IS NOT NULL THEN
@@ -499,6 +595,19 @@ BEGIN
   SELECT id INTO sample_neutralizing FROM lims.samples WHERE name = 'Neutralizing Panel B';
   SELECT id INTO sample_blood_draw FROM lims.samples WHERE name = 'Participant 001 Blood Draw';
   SELECT id INTO sample_pbmc_batch FROM lims.samples WHERE name = 'PBMC Batch 001';
+  SELECT id INTO sample_dna_batch1_101 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 101';
+  SELECT id INTO sample_dna_batch1_102 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 102';
+  SELECT id INTO sample_dna_batch1_103 FROM lims.samples WHERE name = 'DNA Intake Batch 001 - Donor 103';
+  SELECT id INTO sample_dna_batch2_201 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 201';
+  SELECT id INTO sample_dna_batch2_202 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 202';
+  SELECT id INTO sample_dna_batch2_203 FROM lims.samples WHERE name = 'DNA Intake Batch 002 - Donor 203';
+  SELECT id INTO sample_library_batch1_101 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 101';
+  SELECT id INTO sample_library_batch1_102 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 102';
+  SELECT id INTO sample_library_batch1_103 FROM lims.samples WHERE name = 'Indexed Library Batch 001 - Donor 103';
+  SELECT id INTO sample_library_batch2_201 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 201';
+  SELECT id INTO sample_library_batch2_202 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 202';
+  SELECT id INTO sample_library_batch2_203 FROM lims.samples WHERE name = 'Indexed Library Batch 002 - Donor 203';
+  SELECT id INTO sample_sequencing_pool FROM lims.samples WHERE name = 'Sequencing Pool Run 001';
 
   IF shelf_id IS NULL THEN
     RAISE NOTICE 'Skipping labware/inventory seeds: storage shelf missing.';
@@ -529,9 +638,45 @@ BEGIN
     LIMIT 1;
   END IF;
 
+  IF NOT EXISTS (SELECT 1 FROM lims.labware WHERE barcode = 'PLATE-DNA-0001') THEN
+    INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, current_storage_sublocation_id, metadata, created_by)
+    SELECT id, 'PLATE-DNA-0001', 'DNA Intake Batch 001', 'in_use', false, shelf_id, jsonb_build_object('batch', '001'), admin_id
+    FROM lims.labware_types
+    WHERE name = '96-Well Plate'
+    LIMIT 1;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM lims.labware WHERE barcode = 'PLATE-DNA-0002') THEN
+    INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, current_storage_sublocation_id, metadata, created_by)
+    SELECT id, 'PLATE-DNA-0002', 'DNA Intake Batch 002', 'in_use', false, shelf_id, jsonb_build_object('batch', '002'), admin_id
+    FROM lims.labware_types
+    WHERE name = '96-Well Plate'
+    LIMIT 1;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM lims.labware WHERE barcode = 'PLATE-LIB-0001') THEN
+    INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, current_storage_sublocation_id, metadata, created_by)
+    SELECT id, 'PLATE-LIB-0001', 'Indexed Library Batch 001/002', 'in_use', false, shelf_id, jsonb_build_object('workflow_stage', 'indexed_library'), admin_id
+    FROM lims.labware_types
+    WHERE name = '96-Well Plate'
+    LIMIT 1;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM lims.labware WHERE barcode = 'POOL-SEQ-0001') THEN
+    INSERT INTO lims.labware(labware_type_id, barcode, display_name, status, is_disposable, expected_disposal_at, current_storage_sublocation_id, metadata, created_by)
+    SELECT id, 'POOL-SEQ-0001', 'Sequencing Pool Run 001 Vessel', 'in_use', true, now() + interval '2 days', shelf_id, jsonb_build_object('workflow_stage', 'pooled_library'), admin_id
+    FROM lims.labware_types
+    WHERE name = '2mL Tube'
+    LIMIT 1;
+  END IF;
+
   SELECT id INTO labware_tube_one FROM lims.labware WHERE barcode = 'TUBE-0001';
   SELECT id INTO labware_plate FROM lims.labware WHERE barcode = 'PLATE-0001';
   SELECT id INTO labware_tube_two FROM lims.labware WHERE barcode = 'TUBE-0002';
+  SELECT id INTO labware_dna_plate_one FROM lims.labware WHERE barcode = 'PLATE-DNA-0001';
+  SELECT id INTO labware_dna_plate_two FROM lims.labware WHERE barcode = 'PLATE-DNA-0002';
+  SELECT id INTO labware_library_plate FROM lims.labware WHERE barcode = 'PLATE-LIB-0001';
+  SELECT id INTO labware_pool_vessel FROM lims.labware WHERE barcode = 'POOL-SEQ-0001';
 
   IF labware_plate IS NOT NULL THEN
     IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_plate AND position_label = 'A1') THEN
@@ -547,6 +692,85 @@ BEGIN
 
   SELECT id INTO pos_a1 FROM lims.labware_positions WHERE labware_id = labware_plate AND position_label = 'A1';
   SELECT id INTO pos_a2 FROM lims.labware_positions WHERE labware_id = labware_plate AND position_label = 'A2';
+
+  IF labware_dna_plate_one IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A1') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_one, 'A1', 1, 1);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A2') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_one, 'A2', 1, 2);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A3') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_one, 'A3', 1, 3);
+    END IF;
+  END IF;
+
+  IF labware_dna_plate_two IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A1') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_two, 'A1', 1, 1);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A2') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_two, 'A2', 1, 2);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A3') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_dna_plate_two, 'A3', 1, 3);
+    END IF;
+  END IF;
+
+  IF labware_library_plate IS NOT NULL THEN
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A1') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'A1', 1, 1);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A2') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'A2', 1, 2);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A3') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'A3', 1, 3);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B1') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'B1', 2, 1);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B2') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'B2', 2, 2);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B3') THEN
+      INSERT INTO lims.labware_positions(labware_id, position_label, row_index, column_index)
+      VALUES (labware_library_plate, 'B3', 2, 3);
+    END IF;
+  END IF;
+
+  SELECT id INTO dna_plate_one_a1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A1';
+  SELECT id INTO dna_plate_one_a2 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A2';
+  SELECT id INTO dna_plate_one_a3 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_one AND position_label = 'A3';
+  SELECT id INTO dna_plate_two_a1 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A1';
+  SELECT id INTO dna_plate_two_a2 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A2';
+  SELECT id INTO dna_plate_two_a3 FROM lims.labware_positions WHERE labware_id = labware_dna_plate_two AND position_label = 'A3';
+  SELECT id INTO library_plate_a1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A1';
+  SELECT id INTO library_plate_a2 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A2';
+  SELECT id INTO library_plate_a3 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'A3';
+  SELECT id INTO library_plate_b1 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B1';
+  SELECT id INTO library_plate_b2 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B2';
+  SELECT id INTO library_plate_b3 FROM lims.labware_positions WHERE labware_id = labware_library_plate AND position_label = 'B3';
 
   IF labware_tube_one IS NOT NULL AND sample_pbmc_aliquot IS NOT NULL THEN
     IF NOT EXISTS (
@@ -614,6 +838,237 @@ BEGIN
     WHERE id = sample_pbmc_batch AND current_labware_id IS NULL;
   END IF;
 
+  IF labware_dna_plate_one IS NOT NULL THEN
+    IF sample_dna_batch1_101 IS NOT NULL AND dna_plate_one_a1 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch1_101 AND labware_id = labware_dna_plate_one AND labware_position_id = dna_plate_one_a1
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch1_101, labware_dna_plate_one, dna_plate_one_a1, now() - interval '20 hours', alice_id, 40, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_one
+      WHERE id = sample_dna_batch1_101 AND current_labware_id IS DISTINCT FROM labware_dna_plate_one;
+    END IF;
+
+    IF sample_dna_batch1_102 IS NOT NULL AND dna_plate_one_a2 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch1_102 AND labware_id = labware_dna_plate_one AND labware_position_id = dna_plate_one_a2
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch1_102, labware_dna_plate_one, dna_plate_one_a2, now() - interval '19 hours', alice_id, 38, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_one
+      WHERE id = sample_dna_batch1_102 AND current_labware_id IS DISTINCT FROM labware_dna_plate_one;
+    END IF;
+
+    IF sample_dna_batch1_103 IS NOT NULL AND dna_plate_one_a3 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch1_103 AND labware_id = labware_dna_plate_one AND labware_position_id = dna_plate_one_a3
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch1_103, labware_dna_plate_one, dna_plate_one_a3, now() - interval '19 hours', alice_id, 39, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_one
+      WHERE id = sample_dna_batch1_103 AND current_labware_id IS DISTINCT FROM labware_dna_plate_one;
+    END IF;
+  END IF;
+
+  IF labware_dna_plate_two IS NOT NULL THEN
+    IF sample_dna_batch2_201 IS NOT NULL AND dna_plate_two_a1 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch2_201 AND labware_id = labware_dna_plate_two AND labware_position_id = dna_plate_two_a1
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch2_201, labware_dna_plate_two, dna_plate_two_a1, now() - interval '18 hours', alice_id, 36, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_two
+      WHERE id = sample_dna_batch2_201 AND current_labware_id IS DISTINCT FROM labware_dna_plate_two;
+    END IF;
+
+    IF sample_dna_batch2_202 IS NOT NULL AND dna_plate_two_a2 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch2_202 AND labware_id = labware_dna_plate_two AND labware_position_id = dna_plate_two_a2
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch2_202, labware_dna_plate_two, dna_plate_two_a2, now() - interval '18 hours', alice_id, 37, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_two
+      WHERE id = sample_dna_batch2_202 AND current_labware_id IS DISTINCT FROM labware_dna_plate_two;
+    END IF;
+
+    IF sample_dna_batch2_203 IS NOT NULL AND dna_plate_two_a3 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_dna_batch2_203 AND labware_id = labware_dna_plate_two AND labware_position_id = dna_plate_two_a3
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_dna_batch2_203, labware_dna_plate_two, dna_plate_two_a3, now() - interval '17 hours', alice_id, 35, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_dna_plate_two
+      WHERE id = sample_dna_batch2_203 AND current_labware_id IS DISTINCT FROM labware_dna_plate_two;
+    END IF;
+  END IF;
+
+  IF labware_library_plate IS NOT NULL THEN
+    IF sample_library_batch1_101 IS NOT NULL AND library_plate_a1 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch1_101 AND labware_id = labware_library_plate AND labware_position_id = library_plate_a1
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch1_101, labware_library_plate, library_plate_a1, now() - interval '8 hours', alice_id, 32, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch1_101 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+
+    IF sample_library_batch1_102 IS NOT NULL AND library_plate_a2 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch1_102 AND labware_id = labware_library_plate AND labware_position_id = library_plate_a2
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch1_102, labware_library_plate, library_plate_a2, now() - interval '7 hours', alice_id, 31, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch1_102 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+
+    IF sample_library_batch1_103 IS NOT NULL AND library_plate_a3 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch1_103 AND labware_id = labware_library_plate AND labware_position_id = library_plate_a3
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch1_103, labware_library_plate, library_plate_a3, now() - interval '7 hours', alice_id, 30, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch1_103 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+
+    IF sample_library_batch2_201 IS NOT NULL AND library_plate_b1 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch2_201 AND labware_id = labware_library_plate AND labware_position_id = library_plate_b1
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch2_201, labware_library_plate, library_plate_b1, now() - interval '6 hours', alice_id, 33, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch2_201 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+
+    IF sample_library_batch2_202 IS NOT NULL AND library_plate_b2 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch2_202 AND labware_id = labware_library_plate AND labware_position_id = library_plate_b2
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch2_202, labware_library_plate, library_plate_b2, now() - interval '6 hours', alice_id, 34, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch2_202 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+
+    IF sample_library_batch2_203 IS NOT NULL AND library_plate_b3 IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM lims.sample_labware_assignments
+        WHERE sample_id = sample_library_batch2_203 AND labware_id = labware_library_plate AND labware_position_id = library_plate_b3
+      ) THEN
+        INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+        VALUES (sample_library_batch2_203, labware_library_plate, library_plate_b3, now() - interval '5 hours', alice_id, 32, 'µL');
+      END IF;
+
+      UPDATE lims.samples
+      SET current_labware_id = labware_library_plate
+      WHERE id = sample_library_batch2_203 AND current_labware_id IS DISTINCT FROM labware_library_plate;
+    END IF;
+  END IF;
+
+  IF labware_pool_vessel IS NOT NULL AND sample_sequencing_pool IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM lims.sample_labware_assignments
+      WHERE sample_id = sample_sequencing_pool AND labware_id = labware_pool_vessel AND labware_position_id IS NULL
+    ) THEN
+      INSERT INTO lims.sample_labware_assignments(sample_id, labware_id, labware_position_id, assigned_at, assigned_by, volume, volume_unit)
+      VALUES (sample_sequencing_pool, labware_pool_vessel, NULL, now() - interval '2 hours', alice_id, 600, 'µL');
+    END IF;
+
+    UPDATE lims.samples
+    SET current_labware_id = labware_pool_vessel
+    WHERE id = sample_sequencing_pool AND current_labware_id IS DISTINCT FROM labware_pool_vessel;
+  END IF;
+
+  INSERT INTO lims.sample_derivations (parent_sample_id, child_sample_id, method, created_by)
+  SELECT parent_id, child_id, method, COALESCE(alice_id, admin_id)
+  FROM (
+    VALUES
+      (sample_dna_batch1_101, sample_library_batch1_101, 'workflow:indexed_library_prep'),
+      (sample_dna_batch1_102, sample_library_batch1_102, 'workflow:indexed_library_prep'),
+      (sample_dna_batch1_103, sample_library_batch1_103, 'workflow:indexed_library_prep'),
+      (sample_dna_batch2_201, sample_library_batch2_201, 'workflow:indexed_library_prep'),
+      (sample_dna_batch2_202, sample_library_batch2_202, 'workflow:indexed_library_prep'),
+      (sample_dna_batch2_203, sample_library_batch2_203, 'workflow:indexed_library_prep')
+  ) AS mapping(parent_id, child_id, method)
+  WHERE parent_id IS NOT NULL
+    AND child_id IS NOT NULL
+  ON CONFLICT (parent_sample_id, child_sample_id) DO NOTHING;
+
+  INSERT INTO lims.sample_derivations (parent_sample_id, child_sample_id, method, created_by)
+  SELECT parent_id, child_id, method, COALESCE(alice_id, admin_id)
+  FROM (
+    VALUES
+      (sample_library_batch1_101, sample_sequencing_pool, 'workflow:library_pooling'),
+      (sample_library_batch1_102, sample_sequencing_pool, 'workflow:library_pooling'),
+      (sample_library_batch1_103, sample_sequencing_pool, 'workflow:library_pooling'),
+      (sample_library_batch2_201, sample_sequencing_pool, 'workflow:library_pooling'),
+      (sample_library_batch2_202, sample_sequencing_pool, 'workflow:library_pooling'),
+      (sample_library_batch2_203, sample_sequencing_pool, 'workflow:library_pooling')
+  ) AS pooling(parent_id, child_id, method)
+  WHERE parent_id IS NOT NULL
+    AND child_id IS NOT NULL
+  ON CONFLICT (parent_sample_id, child_sample_id) DO NOTHING;
+
 END;
 $$;
 
@@ -621,6 +1076,9 @@ $$;
 UPDATE lims.samples SET sample_status = 'available' WHERE sample_status IS NULL;
 UPDATE lims.samples SET sample_type_code = 'cell' WHERE sample_type_code IS NULL AND sample_type = 'cell';
 UPDATE lims.samples SET sample_type_code = 'fluid' WHERE sample_type_code IS NULL AND sample_type = 'fluid';
+UPDATE lims.samples SET sample_type_code = 'dna' WHERE sample_type_code IS NULL AND sample_type = 'dna';
+UPDATE lims.samples SET sample_type_code = 'library' WHERE sample_type_code IS NULL AND sample_type = 'library';
+UPDATE lims.samples SET sample_type_code = 'pooled_library' WHERE sample_type_code IS NULL AND sample_type = 'pooled_library';
 
 DO $$
 DECLARE

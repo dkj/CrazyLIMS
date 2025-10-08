@@ -234,7 +234,10 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM lims.samples
-    WHERE name IN ('PBMC Batch 001', 'Serum QC Control Sample')
+    WHERE name IN ('PBMC Batch 001', 'Serum QC Control Sample', 'Sequencing Pool Run 001')
+       OR name LIKE 'DNA Intake Batch %'
+       OR name LIKE 'Indexed Library Batch %'
+       OR name LIKE 'Participant 001 Blood Draw%'
   ) THEN
     RAISE EXCEPTION 'Bob should not see Alice samples';
   END IF;
