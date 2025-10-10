@@ -80,11 +80,17 @@ $$;
 DO $$
 DECLARE
   v_operator uuid;
+  v_researcher uuid;
   v_external uuid;
   v_automation uuid;
 BEGIN
   SELECT id INTO v_operator FROM app_core.users WHERE email = 'ops@example.org';
   PERFORM set_config('session.operator_id', v_operator::text, false);
+
+  SELECT id INTO v_researcher FROM app_core.users WHERE email = 'alice@example.org';
+  IF v_researcher IS NOT NULL THEN
+    PERFORM set_config('session.researcher_id', v_researcher::text, false);
+  END IF;
 
   INSERT INTO app_core.users (external_id, email, full_name, default_role, metadata)
   VALUES (
@@ -164,6 +170,93 @@ $$;
 -- RLS behaviour for researcher persona
 -------------------------------------------------------------------------------
 
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_self_id uuid;
+  v_dataset_scope uuid;
+  v_count integer;
+  v_names text[];
+BEGIN
+  EXECUTE format('SET app.roles = %L', 'app_admin');
+  SELECT id INTO v_self_id FROM app_core.users WHERE email = 'alice@example.org';
+  EXECUTE format('SET app.roles = %L', 'app_researcher');
+
+  IF v_self_id IS NULL THEN
+    RAISE EXCEPTION 'Researcher seed user missing';
+  END IF;
+
+  EXECUTE format('SET app.roles = %L', 'app_admin');
+  SELECT scope_id INTO v_dataset_scope
+  FROM app_security.scopes
+  WHERE scope_key = 'dataset:pilot_plasma';
+  EXECUTE format('SET app.roles = %L', 'app_researcher');
+
+  IF v_dataset_scope IS NULL THEN
+    RAISE EXCEPTION 'Dataset scope missing for tests';
+  END IF;
+
+  EXECUTE format('SET app.actor_id = %L', v_self_id::text);
+  EXECUTE format('SET app.actor_identity = %L', 'alice@example.org');
+  EXECUTE format('SET app.roles = %L', 'app_researcher');
+
+  IF NOT app_security.actor_has_scope(v_dataset_scope) THEN
+    RAISE EXCEPTION 'Researcher failed to resolve dataset scope';
+  END IF;
+
+  EXECUTE format('SET app.roles = %L', 'app_admin');
+  SELECT count(*) INTO v_count
+  FROM app_security.scope_memberships
+  WHERE user_id = v_self_id
+    AND scope_id = v_dataset_scope;
+  EXECUTE format('SET app.roles = %L', 'app_researcher');
+  IF v_count = 0 THEN
+    RAISE EXCEPTION 'Researcher membership missing for dataset scope';
+  END IF;
+
+  IF position('app_admin' in coalesce(current_setting('app.roles', true), '')) > 0 THEN
+    RAISE EXCEPTION 'Roles unexpectedly retain admin: %', current_setting('app.roles', true);
+  END IF;
+  IF app_provenance.can_access_artefact((SELECT artefact_id FROM app_provenance.artefacts WHERE external_identifier = 'REAGENT-BUF-042')) THEN
+    RAISE EXCEPTION 'Researcher unexpectedly granted facility reagent access';
+  END IF;
+
+  IF app_security.has_role('app_admin') THEN
+    RAISE EXCEPTION 'Researcher unexpectedly satisfies admin role check';
+  END IF;
+
+  SELECT array_agg(name ORDER BY name)
+    INTO v_names
+    FROM app_provenance.v_accessible_artefacts;
+
+  IF v_names IS NULL OR array_position(v_names, 'Plasma Aliquot GP-001-A') IS NULL THEN
+    RAISE EXCEPTION 'Researcher could not view plasma aliquot (names=%)', v_names;
+  END IF;
+  IF array_position(v_names, 'FASTQ Bundle GP-001-A') IS NULL THEN
+    RAISE EXCEPTION 'Researcher could not view sequencing data product';
+  END IF;
+  IF array_position(v_names, 'Plasma Prep Buffer Lot 42') IS NOT NULL THEN
+    RAISE EXCEPTION 'Researcher unexpectedly saw facility-only reagent';
+  END IF;
+
+  BEGIN
+    INSERT INTO app_provenance.artefact_scopes (artefact_id, scope_id, relationship)
+    VALUES (
+      (SELECT artefact_id FROM app_provenance.artefacts WHERE external_identifier = 'SAMPLE-GP-001-A'),
+      v_dataset_scope,
+      'supplementary'
+    );
+    RAISE EXCEPTION 'Researcher unexpectedly inserted artefact scope row';
+  EXCEPTION
+    WHEN others THEN
+      IF SQLSTATE NOT IN ('42501','55000','P0001') AND SQLERRM NOT LIKE '%permission denied%' AND SQLERRM NOT LIKE '%row-level security%' THEN
+        RAISE;
+      END IF;
+  END;
+END;
+$$;
+
 RESET ROLE;
 
 -------------------------------------------------------------------------------
@@ -174,9 +267,21 @@ SET ROLE app_operator;
 
 DO $$
 DECLARE
-  v_self_id uuid := current_setting('session.operator_id', false)::uuid;
+  v_self_id uuid;
   v_count integer;
+  v_node_count integer;
+  v_sample_id uuid;
+  v_shelf_id uuid;
+  v_txn uuid;
 BEGIN
+  EXECUTE format('SET app.roles = %L', 'app_admin');
+  SELECT id INTO v_self_id FROM app_core.users WHERE email = 'ops@example.org';
+  EXECUTE format('SET app.roles = %L', 'app_operator');
+
+  IF v_self_id IS NULL THEN
+    RAISE EXCEPTION 'Operator seed user missing';
+  END IF;
+
   EXECUTE format('SET app.actor_id = %L', v_self_id::text);
   EXECUTE format('SET app.actor_identity = %L', 'ops@example.org');
   EXECUTE format('SET app.roles = %L', 'app_operator');
@@ -215,6 +320,55 @@ BEGIN
         RAISE;
       END IF;
   END;
+
+  SELECT count(*) INTO v_node_count FROM app_provenance.storage_nodes;
+  IF v_node_count < 3 THEN
+    RAISE EXCEPTION 'Operator expected storage nodes to be visible (count=%).', v_node_count;
+  END IF;
+
+  v_sample_id := (SELECT artefact_id FROM app_provenance.artefacts WHERE external_identifier = 'SAMPLE-GP-001-A');
+  v_shelf_id := (SELECT storage_node_id FROM app_provenance.storage_nodes WHERE node_key = 'sublocation:freezer_nf1:shelf_a');
+
+  IF NOT app_provenance.can_access_artefact(v_sample_id) THEN
+    RAISE EXCEPTION 'Operator should have access to sample artefact';
+  END IF;
+
+  v_txn := app_security.start_transaction_context(
+    p_actor_id => v_self_id,
+    p_actor_identity => 'ops@example.org',
+    p_effective_roles => ARRAY['app_operator'],
+    p_client_app => 'unit-tests'
+  );
+
+  INSERT INTO app_provenance.artefact_storage_events (
+    artefact_id,
+    from_storage_node_id,
+    to_storage_node_id,
+    event_type,
+    occurred_at,
+    actor_id,
+    reason,
+    metadata
+  )
+  VALUES (
+    v_sample_id,
+    v_shelf_id,
+    NULL,
+    'check_out',
+    clock_timestamp(),
+    v_self_id,
+    'unit-test checkout',
+    jsonb_build_object('unit_test','operator')
+  );
+
+  EXECUTE 'SET ROLE app_admin';
+  EXECUTE format('SET app.roles = %L', 'app_admin');
+  DELETE FROM app_provenance.artefact_storage_events
+  WHERE metadata ->> 'unit_test' = 'operator';
+  EXECUTE 'SET ROLE app_operator';
+  EXECUTE format('SET app.roles = %L', 'app_operator');
+
+  PERFORM app_security.finish_transaction_context(v_txn, 'rolled_back', 'unit-tests');
 END;
 $$;
 
@@ -301,7 +455,11 @@ END;
 $$;
 
 SET ROLE app_admin;
-SELECT set_config('session.alice_id', (SELECT id::text FROM app_core.users WHERE email = 'alice@example.org'), false);
+DO $$
+BEGIN
+  PERFORM set_config('session.alice_id', (SELECT id::text FROM app_core.users WHERE email = 'alice@example.org'), false);
+END;
+$$;
 RESET ROLE;
 SET ROLE app_researcher;
 

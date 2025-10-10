@@ -125,6 +125,24 @@ Contexts provide a stable join key (`txn_id`) that operations, support, and comp
 
 RLS assumes that session settings are present; if you bypass `pre_request` or `start_transaction_context`, reads may succeed but writes will fail when the audit trigger asserts the missing context.
 
+## Phase 2 Redux – Unified Artefact & Provenance Platform
+
+- **Scope fabric** – `app_security.scopes`, `scope_memberships`, and `scope_role_inheritance` generalise access control beyond persona grants. Helpers `app_security.actor_scope_roles`, `app_security.actor_has_scope`, and the new `app_security.session_has_role` resolve the scopes the active session may read/write without relying on definer privileges.
+- **Domain schema (`app_provenance`)**
+  - `artefact_types`, `artefact_traits`, and `artefact_trait_values` describe configurable metadata for subjects, materials, reagents, containers, instrument runs, and data products.
+  - `artefacts`, `process_instances`, `process_types`, `process_io`, and `artefact_relationships` form the provenance graph, capturing lineage, pooling, and process IO roles.
+  - Containment and custody tables (`container_slot_definitions`, `container_slots`, `artefact_container_assignments`, `storage_nodes`, `artefact_storage_events`) track where artefacts are stored, when they move, and who performed the action. Every table is covered by the transaction-context audit trigger.
+  - Linking tables `artefact_scopes` and `process_scopes` bridge domain entities into the scope fabric so RLS can gate access by project, dataset, facility, or workflow-run.
+- **Access helpers & policies** – `app_provenance.can_access_artefact`, `can_access_process`, and `can_access_storage_node` centralise scope-aware checks and are referenced by every RLS predicate. Only `app_admin` bypasses scope checks; operators and automation accounts must hold explicit membership.
+- **Views for downstream clients** – `app_provenance.v_accessible_artefacts` exposes only artefacts the current actor can reach (filtered both by RLS and a view-level predicate), while `v_container_contents` and `v_artefact_current_location` supply inventory snapshots for UI/reporting flows.
+- **Seed fixtures** – `20251010013000_phase2_redux_seed.sql` introduces a synthetic pilot project (project → dataset → workflow-run plus facility scope) with scoped memberships, artefact lineage, container assignments, storage history, and sample data for researcher, operator, and admin personas.
+
+### Operational Notes
+
+- `app_security.has_role` now delegates to `session_has_role`, so scope decisions match the active session even inside security-definer helpers.
+- Automated tests (`ops/db/tests/security.sql`) exercise researcher/operator personas against the new provenance data: researchers can see dataset-scoped artefacts but not facility-only reagents/containers, and operators can register custody events under a transaction context.
+- `app_provenance.v_accessible_artefacts` applies `app_provenance.can_access_artefact` in addition to table-level RLS to guarantee that API clients never receive artefacts outside their scopes.
+
 ## API Token Lifecycle
 
 1. Create (or reuse) an `app_security.api_clients` row describing the automation caller and the roles it may impersonate.
@@ -132,8 +150,8 @@ RLS assumes that session settings are present; if you bypass `pre_request` or `s
 3. Store the plaintext token securely on the caller’s side; only the SHA-256 digest + 6-character hint are retained in the database.
 4. Revoke tokens via `revoked_at`/`revoked_by` or hard deletion. All mutations continue to flow through the transaction context + audit trigger pipeline.
 
-## Next Steps for Phase 2
+## Next Steps
 
-- Introduce new domain schemas (samples, inventory, ELN records) that reference `app_security.transaction_contexts` for provenance instead of embedding audit data ad-hoc.
-- Extend `app_security.record_audit()` to support opt-in masking or column-level filters where sensitive values should not land in the audit log in plaintext.
-- Build operational SQL notebooks/runbooks for tracing a `txn_id`, enumerating changes performed by a specific actor, and monitoring context usage by persona/client.
+- Extend provenance coverage into ELN/task orchestration (Phase 3) using the scope fabric created here.
+- Add masking/column policies to `app_security.record_audit()` for sensitive trait values.
+- Produce operational runbooks that stitch together transaction contexts, scope membership, and artefact lineage for human review.
