@@ -1,104 +1,96 @@
-# Security & Access Control Model
+# Security & Access Control Model – Phase 1 Redux
+
+Phase 1 Redux rebuilds the security backbone around explicit transaction contexts and reusable auditing primitives. The goal: every write path—REST, GraphQL, CLI, automation—must establish the same session metadata before touching data, ensuring consistent RBAC and a tamper-evident audit trail.
 
 ## Personas and Database Roles
 
 | Persona              | Database Role     | Description                                                        |
 | -------------------- | ----------------- | ------------------------------------------------------------------ |
-| Administrator        | `app_admin`       | Full control: manage users, roles, and all domain data.            |
-| Lab Operator         | `app_operator`    | Create and maintain operational records (samples, metadata).       |
-| Researcher           | `app_researcher`  | Read-only access scoped to tenant data and authored content.       |
-| External Collaborator| `app_external`    | Highly restricted read-only slices (future scope).                 |
-| Automation / Machine | `app_automation`  | Service accounts writing instrument output under supervision.      |
+| Administrator        | `app_admin`       | Full control: manage users, roles, tokens, and security settings.  |
+| Lab Operator         | `app_operator`    | Operational workflows (future domain tables) under admin oversight.|
+| Researcher           | `app_researcher`  | Read-only views limited to their own records.                      |
+| External Collaborator| `app_external`    | Restricted read-only personas (future scope).                      |
+| Automation / Machine | `app_automation`  | Service accounts and instrument integrations.                      |
 
-All authenticated personas inherit from the umbrella `app_auth` role, which carries baseline privileges for generated APIs. Authenticator roles (`postgrest_authenticator`, `postgraphile_authenticator`) can assume any application role to honour JWT claims. Local development uses the `dev` role, which inherits every persona role to simplify experimentation.
+`app_auth` is the umbrella role inherited by all personas. `postgrest_authenticator` and `postgraphile_authenticator` can assume any persona role based on JWT claims. Local development continues to use the `dev` role, which inherits every persona for convenience.
 
 ## Core Tables
 
-Phase 1 introduces the following security-centric tables under `lims`:
+All security objects now live under two schemas:
 
-- `lims.roles` – catalog of assignable persona roles (seeded with the table above).
-- `lims.users` – canonical user identities keyed by UUID with optional `external_id` for SSO mapping.
-- `lims.user_roles` – membership bridge (many-to-many) capturing who granted which role and when.
-- `lims.user_tokens` – hashed API credentials linked directly to users (human or service accounts) with revocation metadata and usage tracking.
-
-Downstream tables (currently `lims.samples`) reference `lims.users` via `created_by`, enabling RLS and audit hooks to attribute changes to actors.
+- **`app_core.roles`** – persona catalog (`role_name`, `display_name`, flags for system/assignable).
+- **`app_core.users`** – canonical user identities with metadata, lifecycle timestamps, and service-account flag.
+- **`app_core.user_roles`** – grants linking users to roles, recording who granted access and when.
+- **`app_security.transaction_contexts`** – one row per request/write transaction storing actor identifiers, effective/impersonated roles, JWT snapshot, client metadata, and disposition (`committed`, `rolled_back`, `cancelled`).
+- **`app_security.audit_log`** – immutable audit entries (insert/update/delete) populated by triggers that reference the owning `txn_id`.
+- **`app_security.api_clients`** – registry of automation clients with role allowlists and contact details.
+- **`app_security.api_tokens`** – hashed API tokens linked to a user + optional API client, with expiration and revocation metadata.
 
 ## Session Bootstrap & JWT Mapping
 
-JWTs are expected to carry at least:
+JWTs supplied to PostgREST/PostGraphile should include:
 
-- `sub` – stable external identifier (e.g., Okta subject); mapped to `lims.users.external_id`.
-- `roles` – array of database role names to assume (e.g., `["app_operator"]`).
-- Optional `user_id` – UUID matching `lims.users.id` to skip the lookup by `sub`.
-- Recommended metadata claims (`preferred_username`, `email`) used for audit trails.
+- `sub` – stable external identifier mapped to `app_core.users.external_id`.
+- `roles` (array) or `role` (string) – persona(s) to assume (e.g., `app_admin`).
+- Optional `user_id` – UUID of the user to short-circuit the lookup.
+- Recommended metadata such as `preferred_username` / `email` for audit labels.
 
 ### PostgREST Flow
 
-PostgREST executes `lims.pre_request` before each request. The function inspects the JWT (via `request.jwt.claims`) and calls `set_config` to expose:
+Configure `PGRST_DB_PRE_REQUEST=app_security.pre_request`. The function:
 
-- `lims.current_user_id`
-- `lims.current_roles`
-- Original JWT JSON (`request.jwt.claims`)
+1. Reads `request.jwt.claims` and normalises roles/identifiers.
+2. Seeds session GUCs (`app.actor_id`, `app.actor_identity`, `app.roles`, `app.jwt_claims`, `app.client_app`).
+3. For state-changing HTTP verbs (`POST`, `PUT`, `PATCH`, `DELETE`), calls `app_security.start_transaction_context()` once per request and records lightweight metadata (`http_method`, `request_path`).
 
-`lims.current_roles()` and `lims.current_user_id()` helper functions fall back to parsing the JWT directly, so explicit `set_config` calls act as a fast path and support impersonation scripts.
-
-#### Role Resolution Sources
-
-Sessions can inherit privileges from two places:
-
-1. **JWT Claims** – Tokens may carry `role`/`roles` arrays. `lims.pre_request` trusts these claims and sets the database role immediately (used heavily by service integrations and API tokens).
-2. **Database Assignments** – If claims omit role data, `lims.current_user_id()` resolves the actor, and `lims.has_role()` queries `lims.user_roles` to determine memberships. Humans typically rely on this path to ensure role changes take effect without token regeneration.
-
-This dual approach allows long-lived automation tokens to bake in explicit roles while human accounts remain centrally managed inside the database.
+Helper functions (`app_security.current_roles()`, `app_security.current_actor_id()`, `app_security.has_role(text)`) still fall back to parsing the JWT if these GUCs are missing, but the pre-request hook ensures PostgREST write requests always arrive with a fully initialised transaction context before DML executes.
 
 ### PostGraphile Flow
 
-PostGraphile now runs through `ops/postgraphile/server.js`, which:
+`ops/postgraphile/server.js` mirrors the same bootstrap by:
 
-1. Verifies incoming JWTs with `jsonwebtoken` using the shared secret in `POSTGRAPHILE_JWT_SECRET` (and optional audience/issuer checks).
-2. Injects `request.jwt.claims`, `lims.current_roles`, and the active `role` into `pgSettings` so that every resolver query sees the same context as PostgREST.
+1. Validating JWTs (audience/issuer aware) via `jsonwebtoken`.
+2. Supplying `request.jwt.claims`, `app.jwt_claims`, `app.roles`, `app.actor_id`, `app.actor_identity`, and `app.client_app='postgraphile'` through `pgSettings` before every request.
+3. Using an owner connection (`postgres://postgres:postgres@db:5432/lims`) so watch fixtures (`postgraphile_watch` schema + triggers) are kept up to date for hot-reload while the authenticator continues to run with least privilege.
+4. Allowing the first write in a session to lazily call `app_security.start_transaction_context()` via `app_security.require_transaction_context()`; the helper automatically backfills the context row if `app.txn_id` is absent.
 
-This keeps both API surfaces aligned and allows the database helper functions / RLS policies to behave identically regardless of entry point.
+## Transaction Context Lifecycle
 
-## Row-Level Security Overview
+1. **Start** – Entry points call (or trigger) `app_security.start_transaction_context(...)`, which inserts a row into `app_security.transaction_contexts` and sets local GUCs (`app.txn_id`, `app.actor_id`, `app.roles`, `app.impersonated_roles`, `app.jwt_claims`, `app.client_app`). PostgREST executes this eagerly for write verbs; PostGraphile defers to the first mutation, with `app_security.require_transaction_context()` auto-starting if necessary.
+2. **Mutate** – Tables with write capabilities attach the `app_security.record_audit()` trigger. The trigger calls `app_security.require_transaction_context()` (raising if `app.txn_id` is missing), captures `row_before`/`row_after` snapshots, computes the primary-key diff, and inserts into `app_security.audit_log`.
+3. **Finish** – A deferrable constraint trigger (`trg_mark_transaction_committed`) fires at commit, stamping `finished_status='committed'` and `finished_at`. Custom flows can still override the status via `app_security.finish_transaction_context(...)` before commit (e.g., cancellation paths).
 
-RLS is enforced on `lims.roles`, `lims.users`, `lims.user_roles`, and `lims.samples`:
+Any attempt to insert/update/delete without an active context halts immediately with a descriptive error. If a caller bypasses the pre-request hook, `app_security.require_transaction_context()` backfills the context row by calling `app_security.start_transaction_context()` with the current session metadata.
 
-- Administrators (`app_admin`) can fully manage users, roles, memberships, and samples.
-- Operators (`app_operator`) can read all users, update operational metadata, and manage samples (insert/update/delete).
-- Authenticated actors can always read their own user record and assigned roles via `lims.has_role()` checks in policies.
-- Automation (`app_automation`) can insert/update samples – useful for ingestion daemons – but cannot delete.
-- Read-only personas fall back to the default SELECT policy which trusts `lims.has_role('app_admin')` or sampling of claims.
+## Row-Level Security Policies
 
-Audit triggers (`lims.fn_audit`) capture actor identity, role context, and diffs for each mutation across the secured tables.
+- `app_core.roles` – world-readable; only `app_admin` can insert/update/delete.
+- `app_core.users` – `app_admin` controls lifecycle; non-admin personas can only see their own row.
+- `app_core.user_roles` – restricted to `app_admin` for both read/write.
+- `app_security.api_clients` / `app_security.api_tokens` – visible and mutable only to `app_admin` (automation relies on stored procedures rather than direct table access).
+- `app_security.audit_log` – `SELECT` granted to `app_admin` with RLS enforcing the same.
 
-## Development Fixtures
+Policies depend on `app_security.has_role('role_name')`, which inspects `app.roles` from the session. If `pre_request`/`start_transaction_context` fail to set these GUCs, reads may degrade to minimal visibility, but writes will still be blocked by the audit trigger guard.
 
-Sample JWTs and helper scripts live under `ops/examples/jwts`:
+## Service Accounts & API Tokens
 
-- `make-dev-jwts.sh` regenerates tokens signed with the local dev secret.
-- `admin.jwt`, `operator.jwt`, and `researcher.jwt` align with the seeded users (`admin@example.org`, `operator@example.org`, `alice@example.org`).
-- Run `make jwt/dev` after tweaking claims or secrets to refresh all fixtures.
+1. Create a service account by inserting into `app_core.users` with `is_service_account = true` and granting roles via `app_core.user_roles`.
+2. Register (or reuse) an `app_security.api_clients` row that whitelists the roles a client may request.
+3. From an admin context, call `app_security.create_api_token(user_id, plaintext_token, allowed_roles, expires_at, metadata, client_identifier)`.
+   - Tokens must be ≥32 characters; the function stores the SHA-256 digest and a 6-character hint.
+   - `allowed_roles` is normalised to lower-case without duplicates.
+   - `created_by` is captured via `app_security.current_actor_id()`.
+4. Revoke tokens via `revoked_at`/`revoked_by` or delete the row. Future instrumentation should exchange these tokens for JWTs that drive the same pre-request workflow as human callers.
 
-Use these files with PostgREST (`curl -H "Authorization: Bearer $(cat admin.jwt)" ...`) or GraphiQL to test RLS paths quickly.
+## Development & Verification
 
-## Service Accounts & Token Lifecycle
-
-- Service accounts are standard `lims.users` records marked with `is_service_account = true`. They receive the same role assignments as other users via `lims.user_roles`.
-- Token digests live in `lims.user_tokens`; plaintext secrets are never persisted. A six-character `token_hint` (trailing characters of the plaintext) helps operators identify which credential a user is referencing. Administrators can inspect all tokens, while individual users may read their own entries thanks to row-level policies.
-- Administrators generate new credentials by calling `lims.create_api_token(user_id, plain_token, allowed_roles, expires_at, metadata)` while logged in with sufficient privileges. The function enforces minimum length, records `created_by`, and defaults the token’s allowed roles to the user’s current assignments when not explicitly provided.
-- Tokens can be revoked by setting `revoked_at`/`revoked_by` or deleting the row. Active counts and last use timestamps are exposed through `lims.v_api_token_overview`.
-- Downstream integration layers should exchange the token for a JWT (future phase) or validate against the stored digest before mapping to an allowed role.
-
-## Verification
-
-- `make test/security` spins up the API containers, regenerates the dev JWT fixtures, and runs smoke tests (`scripts/test_rbac.sh`) that exercise representative REST and GraphQL requests for administrator, operator, and researcher personas.
-- The script confirms that privileged roles can read/write appropriately while lower-privilege personas are restricted to their own scope or denied mutations (including GraphQL mutations blocked for researchers and REST access limited to their own user record).
-- `make db/test` runs SQL-level checks (`ops/db/tests/security.sql`) to validate token hashing, RLS behaviour, and researcher visibility rules directly inside the database.
+- JWT fixtures live under `ops/examples/jwts`. Run `make jwt/dev` after adjusting claims or secrets; the script regenerates tokens and copies them into `ui/public/tokens`.
+- `make db/test` executes SQL regression checks under `ops/db/tests/security.sql`, asserting that writes without contexts fail, audit rows materialise, `finish_transaction_context` updates status, and researcher RLS limits visibility.
+- `make test/security` runs `scripts/test_rbac.sh`, which exercises the transaction helpers via the CLI (admin creates/modifies/deletes within a context; researchers attempt forbidden operations).
 
 ## Operational Checklist
 
-1. Ensure identity provider issues JWTs containing `roles` and `sub` values matching the records in `lims.users` / `lims.user_roles`.
-2. Update `docker-compose.yml` secrets when rotating keys; re-run `make jwt/dev` for new fixtures.
-3. Extend `lims.roles` and `lims.user_roles` via migrations when adding new personas.
-4. Keep `make ci` in CI: it rebuilds the database, applies migrations, and exports OpenAPI / GraphQL contracts, surfacing schema drift.
+1. Ensure PostgREST/PostGraphile are configured with `app_security.pre_request` and call `app_security.start_transaction_context()` for every write.
+2. Rotate JWT secrets via `docker-compose.yml` overrides and regenerate local fixtures with `make jwt/dev`.
+3. Onboard new personas by inserting into `app_core.roles` and crafting migrations that grant appropriate privileges.
+4. Monitor `app_security.v_transaction_context_activity` (open contexts per hour/client) and `app_security.v_audit_recent_activity` for anomalies; investigate any contexts that remain pending.

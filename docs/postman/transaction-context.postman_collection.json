@@ -1,0 +1,88 @@
+{
+  "info": {
+    "_postman_id": "7f6f184d-4f17-4587-a539-84f3b3a4c9d2",
+    "name": "Transaction Context Demo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Sample requests that exercise the Phase 1 Redux transaction context and audit log."
+  },
+  "item": [
+    {
+      "name": "Create User (PostgREST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminJwt}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"demo-user@example.org\",\n  \"full_name\": \"Demo User\",\n  \"default_role\": \"app_researcher\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/app_core.users",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "app_core.users"
+          ]
+        },
+        "description": "Creates a demo user. The request triggers app_security.pre_request, which establishes a transaction context before the insert."
+      },
+      "response": []
+    },
+    {
+      "name": "List Recent Audit Entries",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminJwt}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/app_security.v_audit_recent_activity?order=performed_at.desc&limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "app_security.v_audit_recent_activity"
+          ],
+          "query": [
+            {
+              "key": "order",
+              "value": "performed_at.desc"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        },
+        "description": "Retrieves the latest audit events so you can cross-reference the transaction context ID."
+      },
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "adminJwt",
+      "value": ""
+    }
+  ]
+}

@@ -7,7 +7,7 @@ const connectionString =
   process.env.DATABASE_URL ||
   "postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims";
 
-const schemaList = (process.env.POSTGRAPHILE_SCHEMAS || "lims,public")
+const schemaList = (process.env.POSTGRAPHILE_SCHEMAS || "app_core")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -20,6 +20,14 @@ const enableWatch =
   (process.env.POSTGRAPHILE_WATCH || "true").toLowerCase() !== "false";
 const port = Number(process.env.POSTGRAPHILE_PORT || 3001);
 
+const ownerConnectionString = process.env.POSTGRAPHILE_OWNER_CONNECTION || null;
+if (ownerConnectionString) {
+  // eslint-disable-next-line no-console
+  console.log("PostGraphile using owner connection for watch fixtures");
+} else {
+  // eslint-disable-next-line no-console
+  console.warn("PostGraphile owner connection not configured; watch fixtures may fail");
+}
 const app = express();
 
 function normalizeRoles(claims) {
@@ -68,12 +76,14 @@ app.use((req, res, next) => {
 app.use(
   postgraphile(connectionString, schemaList, {
     watchPg: enableWatch,
+    ownerConnectionString,
     graphiql: true,
     enhanceGraphiql: true,
     dynamicJson: true,
     pgSettings: async (req) => {
       const settings = {
         role: fallbackRole,
+        "app.client_app": "postgraphile",
       };
 
       const claims = req && req.jwtClaims ? req.jwtClaims : null;
@@ -82,14 +92,22 @@ app.use(
         settings["request.jwt.claims"] = JSON.stringify(claims);
 
         const roles = normalizeRoles(claims);
+        settings["app.roles"] =
+          roles.length > 0 ? roles.join(",") : "";
         if (roles.length > 0) {
-          settings["lims.current_roles"] = roles.join(",");
           settings.role = roles[0];
         }
 
         if (claims.user_id) {
-          settings["lims.current_user_id"] = String(claims.user_id);
+          settings["app.actor_id"] = String(claims.user_id);
         }
+
+        const actorIdentity = claims.sub || claims.email || claims.preferred_username;
+        if (actorIdentity) {
+          settings["app.actor_identity"] = String(actorIdentity);
+        }
+
+        settings["app.jwt_claims"] = JSON.stringify(claims);
       }
 
       return settings;

@@ -124,3 +124,23 @@ export interface StorageTreeRow {
   labware_count: number;
   sample_count: number;
 }
+
+export interface TransactionContextActivityRow {
+  started_hour: string;
+  client_app: string;
+  finished_status: string;
+  context_count: number;
+  open_contexts: number;
+}
+
+export interface AuditRecentActivityRow {
+  audit_id: number;
+  performed_at: string;
+  schema_name: string;
+  table_name: string;
+  operation: string;
+  txn_id: string;
+  actor_id: string | null;
+  actor_identity: string | null;
+  actor_roles: string[] | null;
+}

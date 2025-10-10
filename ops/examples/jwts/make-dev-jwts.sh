@@ -31,26 +31,32 @@ emit_token() {
 }
 
 admin_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:admin","preferred_username":"admin","email":"admin@example.org","roles":["app_admin","app_operator"],"role":"app_admin","exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:admin","preferred_username":"admin","email":"admin@example.org","roles":["app_admin","app_operator"],"role":"app_admin","exp":${EXP},"iat":1700000000}
 JSON
 )
 
 operator_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:operator","preferred_username":"operator","email":"operator@example.org","roles":["app_operator"],"role":"app_operator","exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:ops","preferred_username":"ops","email":"ops@example.org","roles":["app_operator"],"role":"app_operator","exp":${EXP},"iat":1700000000}
 JSON
 )
 
 researcher_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:alice","preferred_username":"alice","email":"alice@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:alice","preferred_username":"alice","email":"alice@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
 JSON
 )
 
-researcher_bob_payload=$(cat <<JSON
-{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:lims:user:bob","preferred_username":"bob","email":"bob@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+external_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:external","preferred_username":"external","email":"external@example.org","roles":["app_external"],"role":"app_external","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+automation_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:automation","preferred_username":"automation","email":"automation@example.org","roles":["app_automation"],"role":"app_automation","exp":${EXP},"iat":1700000000}
 JSON
 )
 
 emit_token "admin" "${admin_payload}"
 emit_token "operator" "${operator_payload}"
 emit_token "researcher" "${researcher_payload}"
-emit_token "researcher_bob" "${researcher_bob_payload}"
+emit_token "external" "${external_payload}"
+emit_token "automation" "${automation_payload}"

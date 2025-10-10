@@ -4,10 +4,11 @@ These example tokens let you impersonate common personas when calling PostgREST 
 
 ## Files
 
-- `admin.jwt` – Administrator with operator fallback role.
-- `operator.jwt` – Operations user able to manage samples.
-- `researcher.jwt` – Researcher (Alice) with read access scoped to her samples.
-- `researcher_bob.jwt` – Researcher (Bob) scoped to a different project/sample set.
+- `admin.jwt` – Administrator persona, effective roles `app_admin, app_operator`.
+- `operator.jwt` – Operations persona (`app_operator`).
+- `researcher.jwt` – Researcher persona (Alice) with access limited to her own user record by RLS.
+- `external.jwt` – External collaborator persona (`app_external`).
+- `automation.jwt` – Automation/service persona (`app_automation`).
 
 ## Regenerating tokens
 

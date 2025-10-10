@@ -42,14 +42,12 @@ BEGIN
   END IF;
 END $$;
 
--- Establish the hierarchy for authenticated roles.
 GRANT app_auth TO app_admin;
 GRANT app_auth TO app_operator;
 GRANT app_auth TO app_researcher;
 GRANT app_auth TO app_external;
 GRANT app_auth TO app_automation;
 
--- Allow authenticators to assume application roles based on JWT claims.
 GRANT web_anon TO postgrest_authenticator;
 GRANT app_auth TO postgrest_authenticator;
 GRANT app_admin TO postgrest_authenticator;
@@ -66,7 +64,6 @@ GRANT app_researcher TO postgraphile_authenticator;
 GRANT app_external TO postgraphile_authenticator;
 GRANT app_automation TO postgraphile_authenticator;
 
--- Developer role inherits administrator privileges for local workflows.
 GRANT web_anon TO dev;
 GRANT app_auth TO dev;
 GRANT app_admin TO dev;

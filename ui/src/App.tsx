@@ -11,7 +11,9 @@ import type {
   ProjectAccessRow,
   SampleLineageRow,
   LabwareInventoryRow,
-  StorageTreeRow
+  StorageTreeRow,
+  TransactionContextActivityRow,
+  AuditRecentActivityRow
 } from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
@@ -20,15 +22,13 @@ const API_BASE = POSTGREST_URL.replace(/\/$/, "");
 const personaLabels: Record<string, string> = {
   admin: "Administrator",
   operator: "Operator",
-  researcher: "Researcher (Alice)",
-  researcher_bob: "Researcher (Bob)"
+  researcher: "Researcher (Alice)"
 };
 
 const personaTokenPaths: Record<string, string> = {
   admin: "/tokens/admin.jwt",
   operator: "/tokens/operator.jwt",
-  researcher: "/tokens/researcher.jwt",
-  researcher_bob: "/tokens/researcher_bob.jwt"
+  researcher: "/tokens/researcher.jwt"
 };
 
 function decodeJwt(token: string | undefined) {
@@ -187,6 +187,15 @@ export default function App() {
     token
   );
   const storageTreeView = useGet<StorageTreeRow>("/v_storage_tree", token);
+  const adminToken = activeRoles.includes("app_admin") ? token : undefined;
+  const txnActivityView = useGet<TransactionContextActivityRow>(
+    "/v_transaction_context_activity?order=started_hour.desc,client_app&limit=20",
+    adminToken
+  );
+  const auditActivityView = useGet<AuditRecentActivityRow>(
+    "/v_audit_recent_activity?order=performed_at.desc&limit=20",
+    adminToken
+  );
 
   const [focusedLabwareId, setFocusedLabwareId] = useState<string | null>(null);
   const [focusedSampleId, setFocusedSampleId] = useState<string | null>(null);
@@ -264,6 +273,30 @@ export default function App() {
     []
   );
 
+  const txnActivityColumns = useMemo(
+    () => [
+      { key: "started_hour", label: "Started Hour" },
+      { key: "client_app", label: "Client" },
+      { key: "finished_status", label: "Status" },
+      { key: "context_count", label: "Contexts" },
+      { key: "open_contexts", label: "Open" }
+    ],
+    []
+  );
+
+  const auditActivityColumns = useMemo(
+    () => [
+      { key: "performed_at", label: "Performed At" },
+      { key: "operation", label: "Operation" },
+      { key: "schema_name", label: "Schema" },
+      { key: "table_name", label: "Table" },
+      { key: "txn_id", label: "Transaction" },
+      { key: "actor_identity", label: "Actor Identity" },
+      { key: "actor_roles", label: "Roles" }
+    ],
+    []
+  );
+
   return (
     <div className="app">
       <header className="app__header">
@@ -298,6 +331,39 @@ export default function App() {
 
         {persona && (
           <>
+            {activeRoles.includes("app_admin") && (
+              <section>
+                <h2>Security Monitoring</h2>
+                <p className="section-subtitle">
+                  Transaction contexts and recent audit entries surface here for
+                  quick checks during development. Only administrators can see this
+                  data.
+                </p>
+                <div className="grid grid--two">
+                  <div>
+                    <h3>Transaction Context Activity</h3>
+                    <DataTable
+                      columns={txnActivityColumns}
+                      rows={txnActivityView.data}
+                      loading={txnActivityView.loading}
+                      error={txnActivityView.error}
+                      emptyMessage="No context records yet."
+                    />
+                  </div>
+                  <div>
+                    <h3>Recent Audit Events</h3>
+                    <DataTable
+                      columns={auditActivityColumns}
+                      rows={auditActivityView.data}
+                      loading={auditActivityView.loading}
+                      error={auditActivityView.error}
+                      emptyMessage="No audit activity recorded."
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+
             <section>
               <h2>Project Access Overview</h2>
               <p className="section-subtitle">

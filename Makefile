@@ -119,7 +119,6 @@ test/security:
 
 db/test:
 	cat ops/db/tests/security.sql | $(PSQL_BATCH)
-	cat ops/db/tests/sample_derivations.sql | $(PSQL_BATCH)
 
 rest:
 	@echo "GET /samples via PostgREST";
