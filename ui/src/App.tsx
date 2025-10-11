@@ -22,13 +22,15 @@ const API_BASE = POSTGREST_URL.replace(/\/$/, "");
 const personaLabels: Record<string, string> = {
   admin: "Administrator",
   operator: "Operator",
-  researcher: "Researcher (Alice)"
+  researcher: "Researcher (Alice)",
+  researcher_bob: "Researcher (Bob)"
 };
 
 const personaTokenPaths: Record<string, string> = {
   admin: "/tokens/admin.jwt",
   operator: "/tokens/operator.jwt",
-  researcher: "/tokens/researcher.jwt"
+  researcher: "/tokens/researcher.jwt",
+  researcher_bob: "/tokens/researcher_bob.jwt"
 };
 
 function decodeJwt(token: string | undefined) {

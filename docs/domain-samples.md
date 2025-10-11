@@ -38,3 +38,13 @@ When recording a derivation event:
 3. Update labware assignments to show where the derivative material resides.
 
 Future enhancements will add workflow-aware helpers, but the current schema already supports complex provenance chains.
+
+## Seeded Provenance Examples
+
+The demo database now seeds several provenance graphs to mirror the pre-redux examples while also covering the new redux prompt scenarios:
+
+- **Organoid expansion** – `Organoid Expansion Batch RDX-01` demonstrates linear growth, parallel derivative extractions (RNA + protein), and a cryopreserved backup branch, all owned by project `PRJ-002`.
+- **LCMS spike-in analysis** – `LCMS Run 042 Analyte Panel` joins provenance from a participant plasma prep and a newly created quality-control mixture to illustrate converging parents.
+- **PBMC multi-omics workflow** – New enrichment, RNA, protein, and library samples extend the `PBMC Batch 001` lineage to show diamonds and re-converging descendants inside `PRJ-001`.
+
+Two additional researcher personas (`carol@example.org`, `diego@example.org`) are added to cover collaboration flows and ensure the provenance explorer has multiple contributor viewpoints.

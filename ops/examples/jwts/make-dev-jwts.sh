@@ -45,6 +45,11 @@ researcher_payload=$(cat <<JSON
 JSON
 )
 
+researcher_bob_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:bob","preferred_username":"bob","email":"bob@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
 external_payload=$(cat <<JSON
 {"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:external","preferred_username":"external","email":"external@example.org","roles":["app_external"],"role":"app_external","exp":${EXP},"iat":1700000000}
 JSON
@@ -58,5 +63,6 @@ JSON
 emit_token "admin" "${admin_payload}"
 emit_token "operator" "${operator_payload}"
 emit_token "researcher" "${researcher_payload}"
+emit_token "researcher_bob" "${researcher_bob_payload}"
 emit_token "external" "${external_payload}"
 emit_token "automation" "${automation_payload}"

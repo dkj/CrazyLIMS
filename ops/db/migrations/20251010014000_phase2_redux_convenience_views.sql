@@ -528,20 +528,35 @@ WITH actor_project_roles AS (
   FROM labware_projects
   GROUP BY project_id
 )
+, accessible_projects AS (
+  SELECT project_id FROM project_aggregates
+  UNION
+  SELECT project_id FROM sample_counts
+  UNION
+  SELECT project_id FROM labware_counts
+)
 SELECT
-  agg.project_id AS id,
-  split_part(agg.scope_key, ':', 2) AS project_code,
-  agg.display_name AS name,
-  NULL::text AS description,
-  TRUE AS is_member,
-  CASE WHEN agg.has_direct_membership THEN 'direct' ELSE 'inherited' END AS access_via,
+  ap.project_id AS id,
+  split_part(sc.scope_key, ':', 2) AS project_code,
+  sc.display_name AS name,
+  COALESCE(NULLIF(sc.description, ''), 'Project scope') AS description,
+  COALESCE(agg.project_id IS NOT NULL, app_security.has_role('app_admin')) AS is_member,
+  CASE
+    WHEN agg.has_direct_membership THEN 'direct'
+    WHEN agg.project_id IS NOT NULL THEN 'inherited'
+    ELSE 'implicit'
+  END AS access_via,
   COALESCE(samples.sample_count, 0) AS sample_count,
   COALESCE(labware.labware_count, 0) AS active_labware_count
-FROM project_aggregates agg
+FROM accessible_projects ap
+JOIN app_security.scopes sc
+  ON sc.scope_id = ap.project_id
+LEFT JOIN project_aggregates agg
+  ON agg.project_id = ap.project_id
 LEFT JOIN sample_counts samples
-  ON samples.project_id = agg.project_id
+  ON samples.project_id = ap.project_id
 LEFT JOIN labware_counts labware
-  ON labware.project_id = agg.project_id;
+  ON labware.project_id = ap.project_id;
 
 GRANT SELECT ON app_core.v_project_access_overview TO app_auth;
 

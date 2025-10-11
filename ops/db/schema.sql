@@ -1511,9 +1511,9 @@ CREATE VIEW app_core.v_project_access_overview AS
           GROUP BY actor_project_roles.project_id
         ), sample_assignments AS (
          SELECT sample.artefact_id,
-            sc.scope_id
-           FROM ((app_provenance.artefact_scopes sc
-             JOIN app_provenance.artefacts sample ON ((sample.artefact_id = sc.artefact_id)))
+            sc_1.scope_id
+           FROM ((app_provenance.artefact_scopes sc_1
+             JOIN app_provenance.artefacts sample ON ((sample.artefact_id = sc_1.artefact_id)))
              JOIN app_provenance.artefact_types st ON ((st.artefact_type_id = sample.artefact_type_id)))
           WHERE ((st.kind = 'material'::text) AND app_provenance.can_access_artefact(sample.artefact_id))
         ), sample_projects AS (
@@ -1547,12 +1547,12 @@ CREATE VIEW app_core.v_project_access_overview AS
           GROUP BY sample_projects.project_id
         ), labware_assignments AS (
          SELECT DISTINCT lab.artefact_id AS labware_id,
-            sc.scope_id
+            sc_1.scope_id
            FROM ((((app_provenance.artefact_container_assignments aca
              JOIN app_provenance.artefacts lab ON ((lab.artefact_id = aca.container_artefact_id)))
              JOIN app_provenance.artefact_types lt ON ((lt.artefact_type_id = lab.artefact_type_id)))
              JOIN app_provenance.artefacts sample ON ((sample.artefact_id = aca.artefact_id)))
-             JOIN app_provenance.artefact_scopes sc ON ((sc.artefact_id = sample.artefact_id)))
+             JOIN app_provenance.artefact_scopes sc_1 ON ((sc_1.artefact_id = sample.artefact_id)))
           WHERE ((lt.kind = 'container'::text) AND (aca.released_at IS NULL) AND app_provenance.can_access_artefact(lab.artefact_id))
         ), labware_projects AS (
          SELECT DISTINCT la.labware_id,
@@ -1583,21 +1583,33 @@ CREATE VIEW app_core.v_project_access_overview AS
             count(DISTINCT labware_projects.labware_id) AS labware_count
            FROM labware_projects
           GROUP BY labware_projects.project_id
+        ), accessible_projects AS (
+         SELECT project_aggregates.project_id
+           FROM project_aggregates
+        UNION
+         SELECT sample_counts.project_id
+           FROM sample_counts
+        UNION
+         SELECT labware_counts.project_id
+           FROM labware_counts
         )
- SELECT agg.project_id AS id,
-    split_part(agg.scope_key, ':'::text, 2) AS project_code,
-    agg.display_name AS name,
-    NULL::text AS description,
-    true AS is_member,
+ SELECT ap.project_id AS id,
+    split_part(sc.scope_key, ':'::text, 2) AS project_code,
+    sc.display_name AS name,
+    COALESCE(NULLIF(sc.description, ''::text), 'Project scope'::text) AS description,
+    COALESCE((agg.project_id IS NOT NULL), app_security.has_role('app_admin'::text)) AS is_member,
         CASE
             WHEN agg.has_direct_membership THEN 'direct'::text
-            ELSE 'inherited'::text
+            WHEN (agg.project_id IS NOT NULL) THEN 'inherited'::text
+            ELSE 'implicit'::text
         END AS access_via,
     COALESCE(samples.sample_count, (0)::bigint) AS sample_count,
     COALESCE(labware.labware_count, (0)::bigint) AS active_labware_count
-   FROM ((project_aggregates agg
-     LEFT JOIN sample_counts samples ON ((samples.project_id = agg.project_id)))
-     LEFT JOIN labware_counts labware ON ((labware.project_id = agg.project_id)));
+   FROM ((((accessible_projects ap
+     JOIN app_security.scopes sc ON ((sc.scope_id = ap.project_id)))
+     LEFT JOIN project_aggregates agg ON ((agg.project_id = ap.project_id)))
+     LEFT JOIN sample_counts samples ON ((samples.project_id = ap.project_id)))
+     LEFT JOIN labware_counts labware ON ((labware.project_id = ap.project_id)));
 
 
 --
@@ -4148,4 +4160,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20251010011000'),
     ('20251010012000'),
     ('20251010013000'),
+    ('20251010013500'),
     ('20251010014000');

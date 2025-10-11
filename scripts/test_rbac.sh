@@ -4,8 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
 JWT_DIR="${ROOT_DIR}/ops/examples/jwts"
-POSTGREST_URL="${POSTGREST_URL:-http://localhost:3000}"
-POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://localhost:3001/graphql}"
+# Default to Docker service hostnames inside devcontainer; caller can override.
+POSTGREST_URL="${POSTGREST_URL:-http://postgrest:3000}"
+POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://postgraphile:3001/graphql}"
 
 failures=0
 last_body=""
@@ -270,6 +271,7 @@ main() {
   admin_transaction_smoke
   researcher_rls_smoke
   rest_smoke_tests
+
   graphql_smoke_tests
 
   if (( failures > 0 )); then
@@ -277,7 +279,27 @@ main() {
     exit 1
   fi
 
-  printf '\nSecurity smoke checks complete.\n'
+  request_postgrest "admin" "admin.jwt" "200" "GET" "/users" '' 'length > 0'
+  request_postgrest "operator" "operator.jwt" "200" "GET" "/users" '' 'length > 0'
+  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/users" '' 'length <= 1 and (length == 0 or .[0].email == "alice@example.org")'
+  request_postgrest "admin" "admin.jwt" "200" "GET" "/v_sample_overview" '' 'length > 0'
+  request_postgrest "researcher" "researcher.jwt" "200" "GET" "/v_sample_overview?select=name" '' '([.[] | .name] | (index("Organoid Expansion Batch RDX-01") != null and index("PBMC Batch 001") != null))'
+  request_postgrest "researcher-bob" "researcher_bob.jwt" "200" "GET" "/v_sample_overview?select=name" '' 'map(.name) == ["Neutralizing Panel B"]'
+  request_postgrest "researcher-labware" "researcher.jwt" "200" "GET" "/v_labware_inventory?select=barcode" '' 'map(.barcode) | sort == ["PLATE-0001","PLATE-DNA-0001","PLATE-DNA-0002","PLATE-LIB-0001","POOL-SEQ-0001","TUBE-0001"]'
+  request_postgrest "researcher-bob-labware" "researcher_bob.jwt" "200" "GET" "/v_labware_inventory?select=barcode" '' 'map(.barcode) == ["TUBE-0002"]'
+  request_postgrest "researcher-projects" "researcher.jwt" "200" "GET" "/v_project_access_overview?select=project_code" '' '([.[] | .project_code | ascii_upcase] | (index("PRJ-001") != null and index("PRJ-002") != null))'
+  request_postgrest "researcher-bob-projects" "researcher_bob.jwt" "200" "GET" "/v_project_access_overview?select=project_code" '' '([.[] | .project_code | ascii_upcase] | unique) == ["PRJ-003"]'
+  request_postgrest "researcher-project-summary" "researcher.jwt" "200" "GET" "/v_project_access_overview?select=project_code,access_via,sample_count&order=project_code" '' '((all(.[]; .access_via == "direct")) and ([.[] | .project_code | ascii_upcase] | (index("PRJ-001") != null and index("PRJ-002") != null)))'
+  request_postgrest "researcher-bob-project-summary" "researcher_bob.jwt" "200" "GET" "/v_project_access_overview?select=project_code,access_via,sample_count" '' '((all(.[]; .access_via == "direct")) and ([.[] | .project_code | ascii_upcase] | unique) == ["PRJ-003"])'
+  request_postgrest "researcher-storage" "researcher.jwt" "200" "GET" "/v_storage_tree?select=sublocation_name" '' '([.[] | .sublocation_name] | index("Shelf 1") != null)'
+  request_postgrest "researcher-bob-storage" "researcher_bob.jwt" "200" "GET" "/v_storage_tree?select=sublocation_name" '' '([.[] | .sublocation_name] | index("Shelf 1") != null)'
+
+  if [[ ${failures} -gt 0 ]]; then
+    printf '\nRBAC smoke tests failed: %d issues\n' "${failures}" >&2
+    exit 1
+  fi
+
+  printf '\nRBAC smoke tests passed.\n'
 }
 
 main "$@"
