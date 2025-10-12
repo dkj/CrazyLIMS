@@ -2,11 +2,54 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
+PSQL_COMMAND_OVERRIDE="${PSQL_CMD:-}"
+unset PSQL_CMD
+declare -a PSQL_CMD
+
+runtime="${DEV_RUNTIME:-auto}"
+if [[ "${runtime}" == "auto" ]]; then
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    runtime="docker"
+  else
+    runtime="local"
+  fi
+fi
+
+case "${runtime}" in
+  docker)
+    default_postgrest_url="http://postgrest:3000"
+    default_postgraphile_url="http://postgraphile:3001/graphql"
+    if [[ -z "${PSQL_COMMAND_OVERRIDE}" ]]; then
+      PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
+    fi
+    ;;
+  local)
+    DB_HOST="${DB_HOST:-127.0.0.1}"
+    DB_PORT="${DB_PORT:-6432}"
+    DB_APP_USER="${DB_APP_USER:-dev}"
+    DB_APP_PASSWORD="${DB_APP_PASSWORD:-devpass}"
+    DB_NAME="${DB_NAME:-lims}"
+    default_postgrest_url="http://localhost:3000"
+    default_postgraphile_url="http://localhost:3001/graphql"
+    if [[ -z "${PSQL_COMMAND_OVERRIDE}" ]]; then
+      export PGPASSWORD="${PGPASSWORD:-${DB_APP_PASSWORD}}"
+      PSQL_CMD=(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_APP_USER}" -d "${DB_NAME}")
+    fi
+    ;;
+  *)
+    echo "Unsupported DEV_RUNTIME value: ${runtime}" >&2
+    exit 1
+    ;;
+esac
+
+if [[ -n "${PSQL_COMMAND_OVERRIDE}" ]]; then
+  # shellcheck disable=SC2206
+  PSQL_CMD=(${PSQL_COMMAND_OVERRIDE})
+fi
+
 JWT_DIR="${ROOT_DIR}/ops/examples/jwts"
-# Default to Docker service hostnames inside devcontainer; caller can override.
-POSTGREST_URL="${POSTGREST_URL:-http://postgrest:3000}"
-POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://postgraphile:3001/graphql}"
+POSTGREST_URL="${POSTGREST_URL:-${default_postgrest_url}}"
+POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-${default_postgraphile_url}}"
 
 failures=0
 last_body=""

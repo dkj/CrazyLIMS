@@ -4,14 +4,17 @@ This repository hosts the database-first foundation for the CrazyLIMS project. T
 
 ## Prerequisites
 
-- Docker + Docker Compose v2
 - GNU Make
+- One of:
+  - Docker + Docker Compose v2 (host or devcontainer)
+  - Local toolchain: PostgreSQL 15+, Node.js 18+, npm, curl, jq, openssl, and tar with xz support. The helper script below will
+    attempt to install PostgreSQL automatically via `apt-get` when running as root.
 - (Optional) VS Code Devcontainer extension for the curated local environment
 
 ## First-Time Setup
 
 ```bash
-# bring up the stack and apply migrations
+# bring up the stack and apply migrations (Docker when available, otherwise the local helper)
 make up
 
 # wait until Postgres is healthy (also done automatically from targets)
@@ -21,7 +24,33 @@ make db-wait
 make ci
 ```
 
-The `dev` service defined in `docker-compose.yml` is used by the devcontainer; when working on the host, the main targets interact with Docker directly.
+The `dev` service defined in `docker-compose.yml` is used by the devcontainer; when Docker is unavailable the Makefile transparently drives the local helper described below.
+
+The Makefile auto-detects whether Docker Compose is usable. You can override the choice with `DEV_RUNTIME=docker` or `DEV_RUNTIME=local` (or the legacy `USE_DOCKER=yes|no`) when invoking `make` if you need to force a specific workflow.
+
+### Running without Docker (Codex-friendly)
+
+When Docker cannot be used (e.g. Codespaces-lite/Codex sandboxes), the `scripts/local_dev.sh` helper provisions a private PostgreSQL cluster under `.localdev/`, downloads PostgREST/PostGraphile binaries, and keeps process management out of band from Docker Compose.
+
+```bash
+# initialize the local toolchain (installs PostgreSQL via apt-get when missing)
+./scripts/local_dev.sh start
+
+# apply migrations / run checks via Make targets as usual
+make db/migrate
+make db/test
+make test/security
+
+# stop services when finished (Postgres, PostgREST, PostGraphile)
+./scripts/local_dev.sh stop
+```
+
+Additional helper commands:
+
+- `./scripts/local_dev.sh status` – quick health snapshot
+- `./scripts/local_dev.sh reset` – stop everything and remove `.localdev/pgdata`
+- `./scripts/local_dev.sh logs` – tail the PostgreSQL/PostgREST/PostGraphile logs in one stream
+- `./scripts/local_dev.sh psql` – open a `psql` shell as the seeded `dev` role
 
 ## Key Targets
 

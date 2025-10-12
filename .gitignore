@@ -1,1 +1,5 @@
 db.session.sql
+.local/
+.localdev/
+ops/postgraphile/node_modules/
+ui/node_modules/
