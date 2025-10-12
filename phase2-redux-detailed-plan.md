@@ -8,7 +8,7 @@
 
 ## Guiding Principles
 - **Provenance-first**: all transformations flow through explicit process instances with typed inputs/outputs, enabling full lineage for compliance and analytics.
-- **Optional containment**: containers are first-class but orthogonal to provenance; artefacts may exist without a container, allowing atomic samples and donors to be tracked accurately.
+- **Physical fidelity**: material artefacts always encapsulate the container slot that holds them; new locations are modelled as new derived artefacts rather than reassignment rows.
 - **Configurable semantics**: artefact types, traits, and workflow templates are admin-configurable to accommodate new assays without schema churn.
 - **Intentional rollout**: there are no external consumers yet, but internal APIs and fixtures should evolve predictably so downstream clients can onboard without churn.
 
@@ -21,9 +21,9 @@
 - Capture multiplexing patterns explicitly: support processes that collapse many inputs into pooled artefacts and later expand them again, recording the matching metadata and evidence needed to reconcile downstream outputs with the upstream contributors.
 
 ### 2. Containment & Location
-- Model containers as artefacts with associated slot/position metadata (`container_slots`) and assignment history (`artefact_container_assignments`).
+- Model containers as artefacts with associated slot/position metadata (`container_slots`). Material artefacts reference the container and slot directly; no separate `artefact_container_assignments` table is required.
 - Capture storage hierarchies (facility → unit → sublocation) and allow logical storage (filesystem/S3 paths) using the same containment interfaces.
-- Define APIs/views for “what’s in this freezer/plate” and “where is this artefact now,” ensuring history is queryable.
+- Define APIs/views for “what’s in this freezer/plate” and “where is this artefact now,” by querying material artefacts filtered on their container references.
 
 ### 3. RBAC & Scope Generalization
 - Introduce `scopes` (project, facility, dataset, workflow-run) with `scope_memberships` and `scope_role_inheritance`.

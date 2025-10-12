@@ -1,50 +1,86 @@
-# Samples Domain Overview
+# Material Artefact Domain Overview
 
-A **sample** represents a coherent unit of material – usually biological – whose identity persists regardless of how many containers currently hold portions of it. A single sample may therefore appear in one or many pieces of labware:
+In the Phase 2 redux model a "sample" is always tied to its physical location.
+Rather than tracking abstract sample records plus separate labware
+assignments, each **material artefact** is the combination of:
 
-- Whole organisms or unique artifacts may reside in exactly one container.
-- Extracted material (DNA, RNA, lysate, etc.) often spans multiple containers such as arrival plates, aliquot tubes, and reserve stock plates.
+- The container it currently occupies (via `plate_id`, `tube_id`, etc.).
+- The precise slot or coordinates inside that container (e.g.,
+  `plate_slot='A1'`).
+- The material traits that describe the contents (volume, concentration,
+  fragment profile, QC decisions, and other assay-specific metadata).
 
-Any process that changes the nature of the material results in a **derivative sample**. Derivations may:
+When material moves to a different container, the LIMS creates a **new derived
+artefact** that represents the destination location. Provenance edges record the
+relationship between the old and new artefacts so lineage remains intact without
+needing a separate "sample" entity floating between containers.
 
-- Split one sample into multiple children (e.g., size-selection yielding "large" and "small" fractions).
-- Combine multiple parent samples into a new child (e.g., pooling indexed libraries into a sequencing run).
+## Artefact Lineage
 
-The schema captures these concepts through:
+Material derivations remain central to the schema, but they now operate entirely
+between artefacts:
 
-- `lims.samples` – canonical sample records with project ownership.
-- `lims.sample_derivations` – parent/child edges; multiple parents per child and multiple children per parent are supported.
-- `lims.sample_labware_assignments` – point-in-time placement of samples in labware wells or slots.
+- Splits and aliquots create multiple child artefacts, each anchored to its own
+  container slot.
+- Pools link several parent artefacts to a single child artefact that occupies a
+  new container slot.
+- Transformations that change material properties (e.g., PCR, size selection)
+  emit new artefacts whose traits capture the post-process state.
 
-## Project Visibility
+These events are captured with `artefact_relationships` rows that identify the
+parent(s), child(ren), and the `process_instance` responsible for the change.
 
-Sample visibility is governed by project membership, not the user who created the record. `lims.projects` catalogs projects, and `lims.project_members` associates users with the projects they are allowed to view. RLS policies ensure:
+## Container Context
 
-- Administrators/operators can access all projects and samples.
-- Researchers see only the projects (and thus samples) they are explicitly assigned to.
+Containers such as plates, tubes, cartridges, or reservoirs are themselves
+artefacts of kind `container`. They define geometry via traits (plate layout,
+capacity, temperature tolerances) and are referenced directly by material
+artefacts. No intermediary table like `artefact_container_assignments` is
+required—the material artefact's foreign keys and slot traits provide everything
+needed to determine where the material physically resides.
 
-This model allows teams to collaborate on shared material while keeping unrelated projects isolated.
+This approach keeps containment queries straightforward:
 
-## Labware Relationships
+- To list the contents of a plate, filter material artefacts by `plate_id` and
+  order by their `plate_slot` trait.
+- To discover what remains of an aliquot, inspect the traits on the artefact in
+  its current container slot.
 
-Samples link to labware through assignments, allowing multiple simultaneous placements. When a new labware record is created for a sample, an assignment is inserted, and the sample tracks its current labware for quick lookups. Historical movements remain available in `lims.labware_location_history`.
+## Trait Updates & Measurements
 
-## Derivation Workflows
+Because each artefact embodies both the slot and the material, measurements and
+QC results are written directly onto that artefact's traits. Repeat measurements
+append new trait values that reference the measurement process in
+`provenance_process_id`, giving auditors a history of assertions without
+needing cross-container reconciliation logic.
 
-When recording a derivation event:
+If conflicting measurements arise (for example, after a transfer that should
+have produced identical aliquots), the divergence naturally appears as different
+trait histories on the distinct artefacts. Labs can decide whether to branch the
+lineage further or flag a QC exception without overloading a shared sample
+record.
 
-1. Create the new sample (if not already present) under the appropriate project.
-2. Insert one or more rows into `lims.sample_derivations` to capture the parent-child relationships and method metadata.
-3. Update labware assignments to show where the derivative material resides.
+## Visibility & Scoping
 
-Future enhancements will add workflow-aware helpers, but the current schema already supports complex provenance chains.
+Project and facility scoping rules continue to operate on artefacts. A project
+owns the material artefacts it produces; downstream derivatives inherit scope
+via provenance edges, and RLS helpers such as `can_access_artefact` enforce the
+appropriate permissions. Because there is no separate sample catalogue, access
+checks always evaluate the artefact directly involved in a process or
+measurement.
 
-## Seeded Provenance Examples
+## Practical Usage
 
-The demo database now seeds several provenance graphs to mirror the pre-redux examples while also covering the new redux prompt scenarios:
+When implementing workflows:
 
-- **Organoid expansion** – `Organoid Expansion Batch RDX-01` demonstrates linear growth, parallel derivative extractions (RNA + protein), and a cryopreserved backup branch, all owned by project `PRJ-002`.
-- **LCMS spike-in analysis** – `LCMS Run 042 Analyte Panel` joins provenance from a participant plasma prep and a newly created quality-control mixture to illustrate converging parents.
-- **PBMC multi-omics workflow** – New enrichment, RNA, protein, and library samples extend the `PBMC Batch 001` lineage to show diamonds and re-converging descendants inside `PRJ-001`.
+1. Create or reserve the destination container artefact (plate, tube, etc.).
+2. Instantiate new material artefacts for each occupied slot, setting the slot
+   trait and initial properties (volume, expected concentration, etc.).
+3. Link them back to source artefacts through `artefact_relationships` with the
+   relevant `process_instance`.
+4. Update traits as instruments or analysts record new measurements; provenance
+   metadata on each trait keeps the historical context intact.
 
-Two additional researcher personas (`carol@example.org`, `diego@example.org`) are added to cover collaboration flows and ensure the provenance explorer has multiple contributor viewpoints.
+This streamlined model removes redundant containment tables, keeps physical
+reality front and centre, and simplifies queries for both lab operators and
+analysts.

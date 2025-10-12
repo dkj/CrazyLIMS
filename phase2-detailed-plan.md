@@ -1,5 +1,11 @@
 # Detailed Implementation Plan – Phase 2: Samples & Inventory Domain
 
+> **Status**: This plan documents the pre-redux approach where samples and
+> labware assignments were separate entities. The Phase 2 redux work now models
+> material artefacts as inseparable from their container slots. Refer to
+> `phase2-redux-detailed-plan.md` and `docs/domain-samples.md` for the current
+> strategy; this file remains for historical context.
+
 ## Objectives
 - Model laboratory sample lineage, aliquots, and labware containers (tubes, plates, bespoke carriers) along with their environmental storage hierarchy (room → freezer → shelf → slot) to support precise chain-of-custody tracking.
 - Provide inventory management primitives for reagents/consumables, including thresholds, barcode assignment, and restock alerts tied to physical locations.
