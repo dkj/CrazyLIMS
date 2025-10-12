@@ -2,7 +2,24 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
+PSQL_COMMAND_OVERRIDE="${PSQL_CMD:-}"
+unset PSQL_CMD
+declare -a PSQL_CMD
+
+if [[ -n "${PSQL_COMMAND_OVERRIDE}" ]]; then
+  # shellcheck disable=SC2206
+  PSQL_CMD=(${PSQL_COMMAND_OVERRIDE})
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
+else
+  DB_HOST="${DB_HOST:-127.0.0.1}"
+  DB_PORT="${DB_PORT:-6432}"
+  DB_APP_USER="${DB_APP_USER:-dev}"
+  DB_APP_PASSWORD="${DB_APP_PASSWORD:-devpass}"
+  DB_NAME="${DB_NAME:-lims}"
+  export PGPASSWORD="${PGPASSWORD:-${DB_APP_PASSWORD}}"
+  PSQL_CMD=(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_APP_USER}" -d "${DB_NAME}")
+fi
 JWT_DIR="${ROOT_DIR}/ops/examples/jwts"
 # Default to Docker service hostnames inside devcontainer; caller can override.
 POSTGREST_URL="${POSTGREST_URL:-http://postgrest:3000}"
