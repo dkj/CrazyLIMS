@@ -270,6 +270,42 @@ GRANT EXECUTE ON FUNCTION app_provenance.can_access_artefact(uuid, text[]) TO ap
 GRANT EXECUTE ON FUNCTION app_provenance.can_access_process(uuid, text[]) TO app_auth, postgrest_authenticator, postgraphile_authenticator;
 GRANT EXECUTE ON FUNCTION app_provenance.can_access_storage_node(uuid, text[]) TO app_auth, postgrest_authenticator, postgraphile_authenticator;
 
+CREATE OR REPLACE FUNCTION app_provenance.tg_enforce_container_membership()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, app_provenance
+AS $$
+DECLARE
+  v_container uuid;
+BEGIN
+  IF NEW.container_slot_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT cs.container_artefact_id
+  INTO v_container
+  FROM app_provenance.container_slots cs
+  WHERE cs.container_slot_id = NEW.container_slot_id;
+
+  IF v_container IS NULL THEN
+    RAISE EXCEPTION 'Container slot % does not exist', NEW.container_slot_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  IF NEW.container_artefact_id IS NULL THEN
+    NEW.container_artefact_id := v_container;
+  ELSIF NEW.container_artefact_id <> v_container THEN
+    RAISE EXCEPTION 'Slot % belongs to container %, but artefact attempted to link to %',
+      NEW.container_slot_id,
+      v_container,
+      NEW.container_artefact_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 -------------------------------------------------------------------------------
 -- Grants
 -------------------------------------------------------------------------------
@@ -313,9 +349,6 @@ GRANT INSERT, UPDATE, DELETE ON app_provenance.container_slot_definitions TO app
 
 GRANT SELECT ON app_provenance.container_slots TO app_auth;
 GRANT INSERT, UPDATE, DELETE ON app_provenance.container_slots TO app_admin, app_operator;
-
-GRANT SELECT ON app_provenance.artefact_container_assignments TO app_auth;
-GRANT INSERT, UPDATE, DELETE ON app_provenance.artefact_container_assignments TO app_admin, app_operator, app_automation;
 
 GRANT SELECT ON app_provenance.storage_nodes TO app_auth;
 GRANT INSERT, UPDATE, DELETE ON app_provenance.storage_nodes TO app_admin, app_operator;
@@ -647,28 +680,6 @@ CREATE POLICY container_slots_modify ON app_provenance.container_slots
     OR app_provenance.can_access_artefact(container_artefact_id, ARRAY['app_operator'])
   );
 
-ALTER TABLE app_provenance.artefact_container_assignments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_provenance.artefact_container_assignments FORCE ROW LEVEL SECURITY;
-
-CREATE POLICY artefact_container_assignments_select ON app_provenance.artefact_container_assignments
-  FOR SELECT
-  USING (
-    app_security.has_role('app_admin')
-    OR app_provenance.can_access_artefact(artefact_id)
-    OR app_provenance.can_access_artefact(container_artefact_id)
-  );
-
-CREATE POLICY artefact_container_assignments_modify ON app_provenance.artefact_container_assignments
-  FOR ALL
-  USING (
-    app_security.has_role('app_admin')
-    OR app_provenance.can_access_artefact(container_artefact_id, ARRAY['app_operator','app_automation'])
-  )
-  WITH CHECK (
-    app_security.has_role('app_admin')
-    OR app_provenance.can_access_artefact(container_artefact_id, ARRAY['app_operator','app_automation'])
-  );
-
 ALTER TABLE app_provenance.storage_nodes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_provenance.storage_nodes FORCE ROW LEVEL SECURITY;
 
@@ -743,6 +754,11 @@ CREATE TRIGGER trg_touch_process_instances
 BEFORE UPDATE ON app_provenance.process_instances
 FOR EACH ROW
 EXECUTE FUNCTION app_security.touch_updated_at();
+
+CREATE TRIGGER trg_enforce_container_membership
+BEFORE INSERT OR UPDATE ON app_provenance.artefacts
+FOR EACH ROW
+EXECUTE FUNCTION app_provenance.tg_enforce_container_membership();
 
 CREATE TRIGGER trg_touch_artefacts
 BEFORE UPDATE ON app_provenance.artefacts
@@ -833,11 +849,6 @@ AFTER INSERT OR UPDATE OR DELETE ON app_provenance.container_slots
 FOR EACH ROW
 EXECUTE FUNCTION app_security.record_audit();
 
-CREATE TRIGGER trg_audit_artefact_container_assignments
-AFTER INSERT OR UPDATE OR DELETE ON app_provenance.artefact_container_assignments
-FOR EACH ROW
-EXECUTE FUNCTION app_security.record_audit();
-
 CREATE TRIGGER trg_audit_storage_nodes
 AFTER INSERT OR UPDATE OR DELETE ON app_provenance.storage_nodes
 FOR EACH ROW
@@ -851,7 +862,6 @@ EXECUTE FUNCTION app_security.record_audit();
 -- migrate:down
 DROP TRIGGER IF EXISTS trg_audit_artefact_storage_events ON app_provenance.artefact_storage_events;
 DROP TRIGGER IF EXISTS trg_audit_storage_nodes ON app_provenance.storage_nodes;
-DROP TRIGGER IF EXISTS trg_audit_artefact_container_assignments ON app_provenance.artefact_container_assignments;
 DROP TRIGGER IF EXISTS trg_audit_container_slots ON app_provenance.container_slots;
 DROP TRIGGER IF EXISTS trg_audit_container_slot_definitions ON app_provenance.container_slot_definitions;
 DROP TRIGGER IF EXISTS trg_audit_process_scopes ON app_provenance.process_scopes;
@@ -869,6 +879,7 @@ DROP TRIGGER IF EXISTS trg_audit_scope_memberships ON app_security.scope_members
 DROP TRIGGER IF EXISTS trg_audit_scopes ON app_security.scopes;
 
 DROP TRIGGER IF EXISTS trg_touch_storage_nodes ON app_provenance.storage_nodes;
+DROP TRIGGER IF EXISTS trg_enforce_container_membership ON app_provenance.artefacts;
 DROP TRIGGER IF EXISTS trg_touch_artefacts ON app_provenance.artefacts;
 DROP TRIGGER IF EXISTS trg_touch_process_instances ON app_provenance.process_instances;
 DROP TRIGGER IF EXISTS trg_touch_process_types ON app_provenance.process_types;
@@ -887,9 +898,6 @@ DROP POLICY IF EXISTS storage_nodes_modify ON app_provenance.storage_nodes;
 DROP POLICY IF EXISTS storage_nodes_select ON app_provenance.storage_nodes;
 ALTER TABLE app_provenance.storage_nodes DISABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS artefact_container_assignments_modify ON app_provenance.artefact_container_assignments;
-DROP POLICY IF EXISTS artefact_container_assignments_select ON app_provenance.artefact_container_assignments;
-ALTER TABLE app_provenance.artefact_container_assignments DISABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS container_slots_modify ON app_provenance.container_slots;
 DROP POLICY IF EXISTS container_slots_select ON app_provenance.container_slots;
@@ -962,6 +970,7 @@ REVOKE EXECUTE ON FUNCTION app_provenance.can_access_process(uuid, text[]) FROM 
 REVOKE EXECUTE ON FUNCTION app_provenance.can_access_artefact(uuid, text[]) FROM app_auth, postgrest_authenticator, postgraphile_authenticator;
 
 DROP FUNCTION IF EXISTS app_provenance.can_access_storage_node(uuid, text[]);
+DROP FUNCTION IF EXISTS app_provenance.tg_enforce_container_membership();
 DROP FUNCTION IF EXISTS app_provenance.can_access_process(uuid, text[]);
 DROP FUNCTION IF EXISTS app_provenance.can_access_artefact(uuid, text[]);
 
@@ -1094,9 +1103,6 @@ REVOKE UPDATE, DELETE ON app_provenance.artefact_storage_events FROM app_admin;
 
 REVOKE SELECT ON app_provenance.storage_nodes FROM app_auth;
 REVOKE INSERT, UPDATE, DELETE ON app_provenance.storage_nodes FROM app_admin, app_operator;
-
-REVOKE SELECT ON app_provenance.artefact_container_assignments FROM app_auth;
-REVOKE INSERT, UPDATE, DELETE ON app_provenance.artefact_container_assignments FROM app_admin, app_operator, app_automation;
 
 REVOKE SELECT ON app_provenance.container_slots FROM app_auth;
 REVOKE INSERT, UPDATE, DELETE ON app_provenance.container_slots FROM app_admin, app_operator;

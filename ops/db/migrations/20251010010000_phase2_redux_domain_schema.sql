@@ -109,12 +109,18 @@ CREATE TABLE app_provenance.artefacts (
   quantity_estimated        boolean NOT NULL DEFAULT false,
   metadata                  jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
   origin_process_instance_id uuid REFERENCES app_provenance.process_instances(process_instance_id) ON DELETE SET NULL,
+  container_artefact_id     uuid REFERENCES app_provenance.artefacts(artefact_id) ON DELETE SET NULL,
+  container_slot_id         uuid,
   created_at                timestamptz NOT NULL DEFAULT clock_timestamp(),
   created_by                uuid REFERENCES app_core.users(id),
   updated_at                timestamptz NOT NULL DEFAULT clock_timestamp(),
   updated_by                uuid REFERENCES app_core.users(id),
   CHECK (name <> ''),
-  CHECK (quantity IS NULL OR quantity >= 0)
+  CHECK (quantity IS NULL OR quantity >= 0),
+  CHECK (
+    container_slot_id IS NULL
+    OR container_artefact_id IS NOT NULL
+  )
 );
 
 CREATE INDEX idx_artefacts_type ON app_provenance.artefacts(artefact_type_id);
@@ -232,26 +238,18 @@ CREATE TABLE app_provenance.container_slots (
 
 CREATE INDEX idx_container_slots_container ON app_provenance.container_slots(container_artefact_id);
 
-CREATE TABLE app_provenance.artefact_container_assignments (
-  assignment_id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  artefact_id          uuid NOT NULL REFERENCES app_provenance.artefacts(artefact_id) ON DELETE CASCADE,
-  container_artefact_id uuid NOT NULL REFERENCES app_provenance.artefacts(artefact_id) ON DELETE CASCADE,
-  container_slot_id    uuid REFERENCES app_provenance.container_slots(container_slot_id) ON DELETE SET NULL,
-  assigned_at          timestamptz NOT NULL DEFAULT clock_timestamp(),
-  assigned_by          uuid REFERENCES app_core.users(id),
-  released_at          timestamptz,
-  released_by          uuid REFERENCES app_core.users(id),
-  quantity             numeric,
-  quantity_unit        text,
-  metadata             jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
-  CHECK (quantity IS NULL OR quantity >= 0),
-  CHECK (released_at IS NULL OR released_at >= assigned_at)
-);
+ALTER TABLE app_provenance.container_slots
+  ADD CONSTRAINT container_slots_container_unique UNIQUE (container_slot_id, container_artefact_id);
 
-CREATE INDEX idx_container_assignments_artefact ON app_provenance.artefact_container_assignments(artefact_id);
-CREATE INDEX idx_container_assignments_container ON app_provenance.artefact_container_assignments(container_artefact_id);
-CREATE UNIQUE INDEX idx_container_assignment_active ON app_provenance.artefact_container_assignments(artefact_id) WHERE released_at IS NULL;
-CREATE UNIQUE INDEX idx_container_slot_active ON app_provenance.artefact_container_assignments(container_slot_id) WHERE released_at IS NULL;
+ALTER TABLE app_provenance.artefacts
+  ADD CONSTRAINT artefacts_container_slot_fk
+  FOREIGN KEY (container_slot_id, container_artefact_id)
+  REFERENCES app_provenance.container_slots(container_slot_id, container_artefact_id)
+  ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX idx_artefact_slot_unique
+  ON app_provenance.artefacts(container_slot_id)
+  WHERE container_slot_id IS NOT NULL;
 
 -------------------------------------------------------------------------------
 -- Storage hierarchy and events
@@ -304,7 +302,6 @@ CREATE INDEX idx_storage_events_process ON app_provenance.artefact_storage_event
 -- migrate:down
 DROP TABLE IF EXISTS app_provenance.artefact_storage_events;
 DROP TABLE IF EXISTS app_provenance.storage_nodes;
-DROP TABLE IF EXISTS app_provenance.artefact_container_assignments;
 DROP TABLE IF EXISTS app_provenance.container_slots;
 DROP TABLE IF EXISTS app_provenance.container_slot_definitions;
 DROP TABLE IF EXISTS app_provenance.process_scopes;

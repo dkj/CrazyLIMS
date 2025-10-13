@@ -1,3 +1,8 @@
+\restrict 5xeENcvMfOjbkpQFGnS6efnrNtqZ3t13V2HehTibUuS5Eoztp6d1VmkgtMI9rBy
+
+-- Dumped from database version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -215,6 +220,46 @@ BEGIN
   FROM path_nodes;
 
   RETURN result;
+END;
+$$;
+
+
+--
+-- Name: tg_enforce_container_membership(); Type: FUNCTION; Schema: app_provenance; Owner: -
+--
+
+CREATE FUNCTION app_provenance.tg_enforce_container_membership() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'app_provenance'
+    AS $$
+DECLARE
+  v_container uuid;
+BEGIN
+  IF NEW.container_slot_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT cs.container_artefact_id
+  INTO v_container
+  FROM app_provenance.container_slots cs
+  WHERE cs.container_slot_id = NEW.container_slot_id;
+
+  IF v_container IS NULL THEN
+    RAISE EXCEPTION 'Container slot % does not exist', NEW.container_slot_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  IF NEW.container_artefact_id IS NULL THEN
+    NEW.container_artefact_id := v_container;
+  ELSIF NEW.container_artefact_id <> v_container THEN
+    RAISE EXCEPTION 'Slot % belongs to container %, but artefact attempted to link to %',
+      NEW.container_slot_id,
+      v_container,
+      NEW.container_artefact_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
 END;
 $$;
 
@@ -1265,10 +1310,13 @@ CREATE TABLE app_provenance.artefacts (
     quantity_estimated boolean DEFAULT false NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     origin_process_instance_id uuid,
+    container_artefact_id uuid,
+    container_slot_id uuid,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     created_by uuid,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_by uuid,
+    CONSTRAINT artefacts_check CHECK (((container_slot_id IS NULL) OR (container_artefact_id IS NOT NULL))),
     CONSTRAINT artefacts_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT artefacts_name_check CHECK ((name <> ''::text)),
     CONSTRAINT artefacts_quantity_check CHECK (((quantity IS NULL) OR (quantity >= (0)::numeric))),
@@ -1370,30 +1418,6 @@ CREATE VIEW app_core.v_inventory_status AS
 
 
 --
--- Name: artefact_container_assignments; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_container_assignments (
-    assignment_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    artefact_id uuid NOT NULL,
-    container_artefact_id uuid NOT NULL,
-    container_slot_id uuid,
-    assigned_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    assigned_by uuid,
-    released_at timestamp with time zone,
-    released_by uuid,
-    quantity numeric,
-    quantity_unit text,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT artefact_container_assignments_check CHECK (((released_at IS NULL) OR (released_at >= assigned_at))),
-    CONSTRAINT artefact_container_assignments_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT artefact_container_assignments_quantity_check CHECK (((quantity IS NULL) OR (quantity >= (0)::numeric)))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments FORCE ROW LEVEL SECURITY;
-
-
---
 -- Name: container_slots; Type: TABLE; Schema: app_provenance; Owner: -
 --
 
@@ -1424,15 +1448,14 @@ CREATE VIEW app_core.v_labware_contents AS
     sample.artefact_id AS sample_id,
     sample.name AS sample_name,
     sample.status AS sample_status,
-    aca.quantity AS volume,
-    aca.quantity_unit AS volume_unit,
+    sample.quantity AS volume,
+    sample.quantity_unit AS volume_unit,
     loc.storage_node_id AS current_storage_sublocation_id,
     app_provenance.storage_path(loc.storage_node_id) AS storage_path
-   FROM (((((app_provenance.artefacts lab
+   FROM ((((app_provenance.artefacts lab
      JOIN app_provenance.artefact_types lab_type ON ((lab_type.artefact_type_id = lab.artefact_type_id)))
      LEFT JOIN app_provenance.container_slots slot ON ((slot.container_artefact_id = lab.artefact_id)))
-     LEFT JOIN app_provenance.artefact_container_assignments aca ON (((aca.container_slot_id = slot.container_slot_id) AND (aca.released_at IS NULL))))
-     LEFT JOIN app_provenance.artefacts sample ON ((sample.artefact_id = aca.artefact_id)))
+     LEFT JOIN app_provenance.artefacts sample ON (((sample.container_slot_id = slot.container_slot_id) AND (sample.container_artefact_id = lab.artefact_id))))
      LEFT JOIN app_provenance.v_artefact_current_location loc ON ((loc.artefact_id = lab.artefact_id)))
   WHERE ((lab_type.kind = 'container'::text) AND app_provenance.can_access_artefact(lab.artefact_id));
 
@@ -1442,11 +1465,11 @@ CREATE VIEW app_core.v_labware_contents AS
 --
 
 CREATE VIEW app_core.v_labware_inventory AS
- WITH active_assignments AS (
-         SELECT aca.container_artefact_id AS labware_id,
-            aca.artefact_id AS sample_id
-           FROM app_provenance.artefact_container_assignments aca
-          WHERE (aca.released_at IS NULL)
+ WITH labware_samples AS (
+         SELECT a.container_artefact_id AS labware_id,
+            a.artefact_id AS sample_id
+           FROM app_provenance.artefacts a
+          WHERE (a.container_artefact_id IS NOT NULL)
         )
  SELECT lab.artefact_id AS labware_id,
     COALESCE((lab.metadata ->> 'barcode'::text), lab.external_identifier) AS barcode,
@@ -1455,15 +1478,15 @@ CREATE VIEW app_core.v_labware_inventory AS
     lab_type.type_key AS labware_type,
     loc.storage_node_id AS current_storage_sublocation_id,
     app_provenance.storage_path(loc.storage_node_id) AS storage_path,
-    count(DISTINCT aa.sample_id) AS active_sample_count,
+    count(DISTINCT ls.sample_id) AS active_sample_count,
         CASE
-            WHEN (count(aa.sample_id) = 0) THEN NULL::jsonb
+            WHEN (count(ls.sample_id) = 0) THEN NULL::jsonb
             ELSE jsonb_agg(DISTINCT jsonb_build_object('sample_id', sample.artefact_id, 'sample_name', sample.name, 'sample_status', sample.status))
         END AS active_samples
    FROM ((((app_provenance.artefacts lab
      JOIN app_provenance.artefact_types lab_type ON ((lab_type.artefact_type_id = lab.artefact_type_id)))
-     LEFT JOIN active_assignments aa ON ((aa.labware_id = lab.artefact_id)))
-     LEFT JOIN app_provenance.artefacts sample ON ((sample.artefact_id = aa.sample_id)))
+     LEFT JOIN labware_samples ls ON ((ls.labware_id = lab.artefact_id)))
+     LEFT JOIN app_provenance.artefacts sample ON ((sample.artefact_id = ls.sample_id)))
      LEFT JOIN app_provenance.v_artefact_current_location loc ON ((loc.artefact_id = lab.artefact_id)))
   WHERE ((lab_type.kind = 'container'::text) AND app_provenance.can_access_artefact(lab.artefact_id))
   GROUP BY lab.artefact_id, lab.metadata, lab.external_identifier, lab.name, lab.status, lab_type.type_key, loc.storage_node_id;
@@ -1597,12 +1620,12 @@ CREATE VIEW app_core.v_project_access_overview AS
         ), labware_assignments AS (
          SELECT DISTINCT lab.artefact_id AS labware_id,
             sc_1.scope_id
-           FROM ((((app_provenance.artefact_container_assignments aca
-             JOIN app_provenance.artefacts lab ON ((lab.artefact_id = aca.container_artefact_id)))
+           FROM ((((app_provenance.artefacts sample
+             JOIN app_provenance.artefact_types st ON ((st.artefact_type_id = sample.artefact_type_id)))
+             JOIN app_provenance.artefacts lab ON ((lab.artefact_id = sample.container_artefact_id)))
              JOIN app_provenance.artefact_types lt ON ((lt.artefact_type_id = lab.artefact_type_id)))
-             JOIN app_provenance.artefacts sample ON ((sample.artefact_id = aca.artefact_id)))
              JOIN app_provenance.artefact_scopes sc_1 ON ((sc_1.artefact_id = sample.artefact_id)))
-          WHERE ((lt.kind = 'container'::text) AND (aca.released_at IS NULL) AND app_provenance.can_access_artefact(lab.artefact_id))
+          WHERE ((lt.kind = 'container'::text) AND (sample.container_artefact_id IS NOT NULL) AND app_provenance.can_access_artefact(lab.artefact_id))
         ), labware_projects AS (
          SELECT DISTINCT la.labware_id,
             project.scope_id AS project_id
@@ -1764,21 +1787,17 @@ CREATE VIEW app_core.v_sample_lineage AS
             COALESCE((lab.metadata ->> 'barcode'::text), lab.external_identifier) AS labware_barcode,
             lab.name AS labware_name,
             app_provenance.storage_path(loc.storage_node_id) AS storage_path
-           FROM ((app_provenance.artefact_container_assignments aca
-             JOIN app_provenance.artefacts lab ON ((lab.artefact_id = aca.container_artefact_id)))
+           FROM (app_provenance.artefacts lab
              LEFT JOIN app_provenance.v_artefact_current_location loc ON ((loc.artefact_id = lab.artefact_id)))
-          WHERE ((aca.artefact_id = parent.artefact_id) AND (aca.released_at IS NULL))
-          ORDER BY aca.assigned_at DESC
+          WHERE (lab.artefact_id = parent.container_artefact_id)
          LIMIT 1) lab_parent ON (true))
      LEFT JOIN LATERAL ( SELECT lab.artefact_id AS labware_id,
             COALESCE((lab.metadata ->> 'barcode'::text), lab.external_identifier) AS labware_barcode,
             lab.name AS labware_name,
             app_provenance.storage_path(loc.storage_node_id) AS storage_path
-           FROM ((app_provenance.artefact_container_assignments aca
-             JOIN app_provenance.artefacts lab ON ((lab.artefact_id = aca.container_artefact_id)))
+           FROM (app_provenance.artefacts lab
              LEFT JOIN app_provenance.v_artefact_current_location loc ON ((loc.artefact_id = lab.artefact_id)))
-          WHERE ((aca.artefact_id = child.artefact_id) AND (aca.released_at IS NULL))
-          ORDER BY aca.assigned_at DESC
+          WHERE (lab.artefact_id = child.container_artefact_id)
          LIMIT 1) lab_child ON (true))
   WHERE ((parent_type.kind = 'material'::text) AND (child_type.kind = 'material'::text) AND app_provenance.can_access_artefact(parent.artefact_id) AND app_provenance.can_access_artefact(child.artefact_id));
 
@@ -1836,11 +1855,9 @@ CREATE VIEW app_core.v_sample_overview AS
             lab.name AS labware_name,
             COALESCE((lab.metadata ->> 'barcode'::text), lab.external_identifier) AS labware_barcode,
             app_provenance.storage_path(loc.storage_node_id) AS storage_path
-           FROM ((app_provenance.artefact_container_assignments aca
-             JOIN app_provenance.artefacts lab ON ((lab.artefact_id = aca.container_artefact_id)))
+           FROM (app_provenance.artefacts lab
              LEFT JOIN app_provenance.v_artefact_current_location loc ON ((loc.artefact_id = lab.artefact_id)))
-          WHERE ((aca.artefact_id = sample.artefact_id) AND (aca.released_at IS NULL))
-          ORDER BY aca.assigned_at DESC
+          WHERE (lab.artefact_id = sample.container_artefact_id)
          LIMIT 1) lab_assoc ON (true))
      LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('artefact_id', child.artefact_id, 'name', child.name, 'relationship_type', rel.relationship_type) ORDER BY child.name) AS derivatives
            FROM ((app_provenance.artefact_relationships rel
@@ -2182,17 +2199,16 @@ CREATE VIEW app_provenance.v_container_contents AS
     cs.slot_name,
     cs.display_name AS slot_display_name,
     cs."position",
-    aca.artefact_id,
+    occupant.artefact_id,
     occupant.name AS artefact_name,
     occupant.status AS artefact_status,
-    aca.assigned_at,
-    aca.released_at,
-    aca.quantity,
-    aca.quantity_unit
-   FROM (((app_provenance.container_slots cs
+    occupant.quantity,
+    occupant.quantity_unit,
+    occupant.created_at AS occupied_at,
+    occupant.updated_at AS last_updated_at
+   FROM ((app_provenance.container_slots cs
      JOIN app_provenance.artefacts container ON ((container.artefact_id = cs.container_artefact_id)))
-     LEFT JOIN app_provenance.artefact_container_assignments aca ON (((aca.container_slot_id = cs.container_slot_id) AND (aca.released_at IS NULL))))
-     LEFT JOIN app_provenance.artefacts occupant ON ((occupant.artefact_id = aca.artefact_id)));
+     LEFT JOIN app_provenance.artefacts occupant ON (((occupant.container_slot_id = cs.container_slot_id) AND (occupant.container_artefact_id = cs.container_artefact_id))));
 
 
 --
@@ -2354,14 +2370,6 @@ ALTER TABLE ONLY app_core.users
 
 
 --
--- Name: artefact_container_assignments artefact_container_assignments_pkey; Type: CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_pkey PRIMARY KEY (assignment_id);
-
-
---
 -- Name: artefact_relationships artefact_relationships_parent_artefact_id_child_artefact_id_key; Type: CONSTRAINT; Schema: app_provenance; Owner: -
 --
 
@@ -2479,6 +2487,14 @@ ALTER TABLE ONLY app_provenance.container_slot_definitions
 
 ALTER TABLE ONLY app_provenance.container_slots
     ADD CONSTRAINT container_slots_container_artefact_id_slot_name_key UNIQUE (container_artefact_id, slot_name);
+
+
+--
+-- Name: container_slots container_slots_container_unique; Type: CONSTRAINT; Schema: app_provenance; Owner: -
+--
+
+ALTER TABLE ONLY app_provenance.container_slots
+    ADD CONSTRAINT container_slots_container_unique UNIQUE (container_slot_id, container_artefact_id);
 
 
 --
@@ -2665,6 +2681,13 @@ CREATE INDEX idx_artefact_scopes_scope ON app_provenance.artefact_scopes USING b
 
 
 --
+-- Name: idx_artefact_slot_unique; Type: INDEX; Schema: app_provenance; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_artefact_slot_unique ON app_provenance.artefacts USING btree (container_slot_id) WHERE (container_slot_id IS NOT NULL);
+
+
+--
 -- Name: idx_artefact_traits_type; Type: INDEX; Schema: app_provenance; Owner: -
 --
 
@@ -2690,34 +2713,6 @@ CREATE INDEX idx_artefacts_status ON app_provenance.artefacts USING btree (statu
 --
 
 CREATE INDEX idx_artefacts_type ON app_provenance.artefacts USING btree (artefact_type_id);
-
-
---
--- Name: idx_container_assignment_active; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE UNIQUE INDEX idx_container_assignment_active ON app_provenance.artefact_container_assignments USING btree (artefact_id) WHERE (released_at IS NULL);
-
-
---
--- Name: idx_container_assignments_artefact; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_container_assignments_artefact ON app_provenance.artefact_container_assignments USING btree (artefact_id);
-
-
---
--- Name: idx_container_assignments_container; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_container_assignments_container ON app_provenance.artefact_container_assignments USING btree (container_artefact_id);
-
-
---
--- Name: idx_container_slot_active; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE UNIQUE INDEX idx_container_slot_active ON app_provenance.artefact_container_assignments USING btree (container_slot_id) WHERE (released_at IS NULL);
 
 
 --
@@ -2924,13 +2919,6 @@ CREATE TRIGGER trg_touch_users BEFORE UPDATE ON app_core.users FOR EACH ROW EXEC
 
 
 --
--- Name: artefact_container_assignments trg_audit_artefact_container_assignments; Type: TRIGGER; Schema: app_provenance; Owner: -
---
-
-CREATE TRIGGER trg_audit_artefact_container_assignments AFTER INSERT OR DELETE OR UPDATE ON app_provenance.artefact_container_assignments FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
-
-
---
 -- Name: artefact_relationships trg_audit_artefact_relationships; Type: TRIGGER; Schema: app_provenance; Owner: -
 --
 
@@ -3026,6 +3014,13 @@ CREATE TRIGGER trg_audit_process_types AFTER INSERT OR DELETE OR UPDATE ON app_p
 --
 
 CREATE TRIGGER trg_audit_storage_nodes AFTER INSERT OR DELETE OR UPDATE ON app_provenance.storage_nodes FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
+
+
+--
+-- Name: artefacts trg_enforce_container_membership; Type: TRIGGER; Schema: app_provenance; Owner: -
+--
+
+CREATE TRIGGER trg_enforce_container_membership BEFORE INSERT OR UPDATE ON app_provenance.artefacts FOR EACH ROW EXECUTE FUNCTION app_provenance.tg_enforce_container_membership();
 
 
 --
@@ -3163,46 +3158,6 @@ ALTER TABLE ONLY app_core.user_roles
 
 ALTER TABLE ONLY app_core.users
     ADD CONSTRAINT users_default_role_fkey FOREIGN KEY (default_role) REFERENCES app_core.roles(role_name);
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_artefact_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_artefact_id_fkey FOREIGN KEY (artefact_id) REFERENCES app_provenance.artefacts(artefact_id) ON DELETE CASCADE;
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_assigned_by_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES app_core.users(id);
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_container_artefact_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_container_artefact_id_fkey FOREIGN KEY (container_artefact_id) REFERENCES app_provenance.artefacts(artefact_id) ON DELETE CASCADE;
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_container_slot_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_container_slot_id_fkey FOREIGN KEY (container_slot_id) REFERENCES app_provenance.container_slots(container_slot_id) ON DELETE SET NULL;
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_released_by_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_container_assignments
-    ADD CONSTRAINT artefact_container_assignments_released_by_fkey FOREIGN KEY (released_by) REFERENCES app_core.users(id);
 
 
 --
@@ -3363,6 +3318,22 @@ ALTER TABLE ONLY app_provenance.artefact_types
 
 ALTER TABLE ONLY app_provenance.artefacts
     ADD CONSTRAINT artefacts_artefact_type_id_fkey FOREIGN KEY (artefact_type_id) REFERENCES app_provenance.artefact_types(artefact_type_id);
+
+
+--
+-- Name: artefacts artefacts_container_artefact_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
+--
+
+ALTER TABLE ONLY app_provenance.artefacts
+    ADD CONSTRAINT artefacts_container_artefact_id_fkey FOREIGN KEY (container_artefact_id) REFERENCES app_provenance.artefacts(artefact_id) ON DELETE SET NULL;
+
+
+--
+-- Name: artefacts artefacts_container_slot_fk; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
+--
+
+ALTER TABLE ONLY app_provenance.artefacts
+    ADD CONSTRAINT artefacts_container_slot_fk FOREIGN KEY (container_slot_id, container_artefact_id) REFERENCES app_provenance.container_slots(container_slot_id, container_artefact_id) ON DELETE SET NULL;
 
 
 --
@@ -3728,26 +3699,6 @@ CREATE POLICY users_admin_manage ON app_core.users USING (app_security.has_role(
 --
 
 CREATE POLICY users_self_or_admin_read ON app_core.users FOR SELECT USING ((app_security.has_role('app_admin'::text) OR (id = app_security.current_actor_id())));
-
-
---
--- Name: artefact_container_assignments; Type: ROW SECURITY; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE app_provenance.artefact_container_assignments ENABLE ROW LEVEL SECURITY;
-
---
--- Name: artefact_container_assignments artefact_container_assignments_modify; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_container_assignments_modify ON app_provenance.artefact_container_assignments USING ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(container_artefact_id, ARRAY['app_operator'::text, 'app_automation'::text]))) WITH CHECK ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(container_artefact_id, ARRAY['app_operator'::text, 'app_automation'::text])));
-
-
---
--- Name: artefact_container_assignments artefact_container_assignments_select; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_container_assignments_select ON app_provenance.artefact_container_assignments FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(artefact_id) OR app_provenance.can_access_artefact(container_artefact_id)));
 
 
 --
@@ -4205,6 +4156,8 @@ CREATE EVENT TRIGGER postgraphile_watch_drop ON sql_drop
 --
 -- PostgreSQL database dump complete
 --
+
+\unrestrict 5xeENcvMfOjbkpQFGnS6efnrNtqZ3t13V2HehTibUuS5Eoztp6d1VmkgtMI9rBy
 
 
 --
