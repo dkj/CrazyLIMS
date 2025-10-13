@@ -76,6 +76,43 @@ We can consider other variants on these "latent" direct links e.g. single cell d
 these addtions sound too specific - the ability to map downstream nodes to matching (via some process specific means) to upstream nodes, where the intermediate lab process squash the numbers down to fewer or one intermediate sample (like a pool).
 
 
+### test with DNA normalisation
+
+To test the new (phase 2 redux) artefact and provenance data schema I'd like to flesh out a detailed example. Let's do normalisation of a plate of size fragmented and selected DNA:
+- plate is composed of 1 negative control (water), 1 positive control (commercially bought DNA of given fragment size and concentration), 94 other wells containing the (size fragmented and selected DNA for the) scientific samples of interest
+- so we have 96 sample-like artefacts, or perhaps 94 sample-like artefacts and  the 2 controls are reagent-like artefacts, all in a container/plate artefact at particular locations in that plate
+- the concentration, and fragment size distribution, are  (initially unknown) properties of the sample-like artefacts, and known/expected properties of the control artefacts
+- volume of these is a (currently unknown) property of the plate location where (at least some of) the sample-like artefact exists
+- let's suppose the plate undergoes a "measurement" process using some "super-DNA-quantifier" instrument which leaves the plate and its contents unchanged, but returns a data_product, a file which can be parsed, containing the volume, DNA concentration, and DNA fragment distribution information for each well in that plate
+- the LIMS system could/should update properties of artefacts it is tracking by parsing that data product 
+- the volume information is best provided as a property of the well in the plate
+- the DNA concentration and size distribution perhaps belong as an (updated) property of the sample-like artefacts (if the same sample-like artefact is in another plate as well, how might we deal with conflicting information? Just record both? Or, if this happens, acknowledge they are in fact now different sample artefacts and splice in extra nodes and edges to represent this?)
+- there may be a lab QC step at this point to decide which sample are viable/useful - a pass/fail decision should be marked, probably on the sample-artefact
+- the next "normalisation" process will try to produce a plate with equal volumes and equal DNA concentrations in each well (except the negative control)
+- the LIMS generates a normalising manifest, with together with the above plate, a new empty plate and some buffer reagent, form the inputs to the process performed by a liquid handling robot which outputs a data product describing what it has done, and the input plate with reduced volumes, and the new plate now filled with the equal volume and equal concentration wells.
+- the LIMS should create new sample artefacts in the new plate artefact, and adjust the properties of the input plate to account for the volumes used (as described in the robot's data product)
+
+Having played out such an example, do we now think the separation of sample from the more physical labware excessive abstraction and without real value? Perhaps such separation of concept and physical should be based on sources of information, for example artefacts represent the fine-grained container and its contents (so well location, volume, concentrations, fragment size distributions).
+
+Can we further simplify the data schema - get rid of the artefact_container_assignments table - such data should go on the well artefact.
+
+In this revised data model, a physical sample is not (normally?) an artefact divorced from its container - as such we no longer have the situation of a sample being in different containers. Also the problem of conflicting measurement of a sample in two separate containers goes away as that would be two separate samples in this new model.
+Please revise the documents accordingly.
+
+There might still be a need for "virtual" (abstract or imported information) artefacts vs "physical" (in a well, or tube) and "container" (a plate) e.g. information on samples received from elsewhere such a identifiers and characteristics (gender/reference to genotyping) would be on a virtual artefact/sample, which would be linked to a physical artefact/sample on physical sample reception by a lab. Data products would either contain the data themselves (actual data product), or if large a description of the (virtual) data product (e.g. file names and relative paths, checksums, sizes) off which might hang data product locations which help track the data product lifecycle.
+
+### work in codex environment
+
+Consider how this repo is designed for developer use either in a devcontainer (using docker outside of docker to allow docker compose to work with it), or using docker compose from outside a container.
+
+I understand codex environments, such as the one you are running in, cannot use containers/docker, so please adapt  this repo to work without containers (so perhaps enabling a postgresql, postgrest and postgraphile services ) in codex environments so that the setup/migrations and tests can be run. It should still work in that same manner as now with docker compose both inside and outside a devcontainer as well.
+
+
 ### Later
 
+
 Consider enhancing the Makefile so it does not tear down the devcontainer it is running in, and that connections from rest or graphql services don't block a DB reset.
+
+### no longer relevant
+
+We should keep the information about the nature of "sample", but note that it is represented as part of more general artefact model.

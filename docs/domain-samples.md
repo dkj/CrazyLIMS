@@ -1,50 +1,52 @@
-# Samples Domain Overview
+# Unified Artefact & Provenance Overview
 
-A **sample** represents a coherent unit of material – usually biological – whose identity persists regardless of how many containers currently hold portions of it. A single sample may therefore appear in one or many pieces of labware:
+Phase 2 Redux consolidates donors, samples, reagents, labware, instrument runs, and data products under the `app_provenance` schema. Every entity the lab needs to track becomes an **artefact**, with provenance edges describing how material moves and transforms over time. This document summarises the core concepts so developers and scientists can reason about the new model without having to page through migrations.
 
-- Whole organisms or unique artifacts may reside in exactly one container.
-- Extracted material (DNA, RNA, lysate, etc.) often spans multiple containers such as arrival plates, aliquot tubes, and reserve stock plates.
+## What Makes an Artefact a “Sample”?
 
-Any process that changes the nature of the material results in a **derivative sample**. Derivations may:
+The previous schema elevated “samples” as a dedicated table. In the unified model, a **sample** is an artefact whose type has `kind = 'material'`. The same principles still hold:
 
-- Split one sample into multiple children (e.g., size-selection yielding "large" and "small" fractions).
-- Combine multiple parent samples into a new child (e.g., pooling indexed libraries into a sequencing run).
+- Samples represent coherent material whose identity persists even when subdivided. Divisible material (e.g. lysate, DNA libraries) can occupy multiple containers simultaneously, while atomic material (e.g. whole insects) usually sits in a single container.
+- Transforming material—splitting, pooling, amplifying—creates new sample artefacts linked back to their parents. The new artefact may inherit traits (such as donor, collection protocol) and adds context about the process that produced it.
+- Aliquots are not separate “sample vs. aliquot” tables; instead, each placement is tracked through container assignments while the underlying sample artefact retains continuity.
 
-The schema captures these concepts through:
+Views such as `app_core.v_sample_overview` filter material artefacts to deliver the familiar sample-centric perspective for researchers, preserving the mental model while benefiting from the broader artefact framework.
 
-- `lims.samples` – canonical sample records with project ownership.
-- `lims.sample_derivations` – parent/child edges; multiple parents per child and multiple children per parent are supported.
-- `lims.sample_labware_assignments` – point-in-time placement of samples in labware wells or slots.
+## Artefact Basics
 
-## Project Visibility
+- `app_provenance.artefacts` holds the canonical records for physical material, digital deliverables, containers, instruments, and workflow placeholders. Each row references an `artefact_type` that defines its semantics (e.g. `material`, `reagent`, `container`, `data_product`, `subject`).
+- Artefacts carry lifecycle metadata (`status`, `created_at`, `origin_process_instance_id`), optional identifiers (`external_identifier`, `barcode` in `metadata`), and flags indicating whether they are divisible or consumable. This replaces the old `lims.samples` table.
+- Flexible attributes live in `artefact_traits` and `artefact_trait_values`, allowing traits such as concentration, storage temperature, or barcode chemistry to be attached without schema churn. Trait history is versioned with `effective_at` timestamps.
 
-Sample visibility is governed by project membership, not the user who created the record. `lims.projects` catalogs projects, and `lims.project_members` associates users with the projects they are allowed to view. RLS policies ensure:
+The schema treats donors, aliquots, kits, sequencing libraries, instrument runs, and derived data sets the same way. Downstream interfaces can still present “sample views” or “inventory views” by filtering on `artefact_types.kind` and traits.
 
-- Administrators/operators can access all projects and samples.
-- Researchers see only the projects (and thus samples) they are explicitly assigned to.
+## Provenance & Lineage
 
-This model allows teams to collaborate on shared material while keeping unrelated projects isolated.
+- `process_instances` capture each lab or informatics activity (extraction, pooling, sequencing, demultiplexing). A process references a `process_type`, tracks timing and operator metadata, and may be scoped to projects/facilities.
+- `process_io` ties artefacts to processes as inputs or outputs. Roles and optional `multiplex_group` values model pooled or latent connections—e.g. multiple indexed libraries contributing to a pooled sample and later demultiplexed into per-sample data products.
+- `artefact_relationships` store direct parent/child edges (split, merge, derived_from, etc.) and link back to the originating `process_instance_id`. This accommodates both simple derivations and many-to-many graphs.
 
-## Labware Relationships
+Together these structures provide a first-class provenance graph: artefacts connect to processes, which connect back to artefacts. Lineage queries in `v_sample_lineage`, `v_process_activity`, and related views traverse the graph while respecting row-level security.
 
-Samples link to labware through assignments, allowing multiple simultaneous placements. When a new labware record is created for a sample, an assignment is inserted, and the sample tracks its current labware for quick lookups. Historical movements remain available in `lims.labware_location_history`.
+## Containment & Storage
 
-## Derivation Workflows
+- Containers are artefacts whose type `kind` is `container`. Slot layouts reside in `container_slots`; actual placements are recorded in `artefact_container_assignments` with quantity metadata and timestamps.
+- Physical and logical storage locations are modelled via `storage_nodes`, and movements are recorded in `artefact_storage_events`. Helper views (`v_artefact_current_location`, `v_storage_tree`) provide current placements and hierarchical storage paths.
+- Because containers and locations participate as artefacts, the model handles “sample in tube in rack in freezer” or “data product stored in S3 prefix” uniformly.
 
-When recording a derivation event:
+## Access Control & Scoping
 
-1. Create the new sample (if not already present) under the appropriate project.
-2. Insert one or more rows into `lims.sample_derivations` to capture the parent-child relationships and method metadata.
-3. Update labware assignments to show where the derivative material resides.
+- Artefacts and processes are tagged to scopes using `artefact_scopes` and `process_scopes`. Scopes cascade permissions via the scope inheritance fabric defined in Phase 1 Redux (`app_security.scopes`, `scope_memberships`, `scope_role_inheritance`).
+- RLS functions such as `app_provenance.can_access_artefact` and `app_security.actor_has_scope` ensure that researchers only observe artefacts tied to their projects or facilities. Operators and admins retain broad visibility.
 
-Future enhancements will add workflow-aware helpers, but the current schema already supports complex provenance chains.
+PostgREST/PostGraphile expose curated views (`app_core.v_sample_overview`, `app_core.v_labware_contents`, `app_provenance.v_lineage_summary`, etc.) so front-end workflows can present persona-friendly perspectives without breaking the unified model.
 
-## Seeded Provenance Examples
+## Seeded Scenarios
 
-The demo database now seeds several provenance graphs to mirror the pre-redux examples while also covering the new redux prompt scenarios:
+Migration `20251010013000_phase2_redux_seed.sql` and its follow-ups populate representative datasets used in demos and regression tests:
 
-- **Organoid expansion** – `Organoid Expansion Batch RDX-01` demonstrates linear growth, parallel derivative extractions (RNA + protein), and a cryopreserved backup branch, all owned by project `PRJ-002`.
-- **LCMS spike-in analysis** – `LCMS Run 042 Analyte Panel` joins provenance from a participant plasma prep and a newly created quality-control mixture to illustrate converging parents.
-- **PBMC multi-omics workflow** – New enrichment, RNA, protein, and library samples extend the `PBMC Batch 001` lineage to show diamonds and re-converging descendants inside `PRJ-001`.
+- **Organoid expansion** lineage covering cryopreservation, RNA/protein derivatives, and storage moves.
+- **LCMS spike-in analysis** mixing participant plasma with QA reagents to illustrate converging parents and facility scopes.
+- **PBMC multi-omics workflow** showing diamonds, splits, merges, and eventual sequencing data products with multiplexed provenance.
 
-Two additional researcher personas (`carol@example.org`, `diego@example.org`) are added to cover collaboration flows and ensure the provenance explorer has multiple contributor viewpoints.
+Each scenario includes scopes, labware placements, and audit trails. Running `make db/reset` followed by `make test/security` or `make contracts/export` rebuilds the database and regenerates API contracts so the documentation stays aligned with the deployed schema.
