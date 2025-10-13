@@ -6,10 +6,27 @@ PSQL_COMMAND_OVERRIDE="${PSQL_CMD:-}"
 unset PSQL_CMD
 declare -a PSQL_CMD
 
+RUNTIME_HELPER="${ROOT_DIR}/ops/bin/runtime.sh"
+if [[ ! -x "${RUNTIME_HELPER}" ]]; then
+  echo "Runtime helper not found at ${RUNTIME_HELPER}" >&2
+  exit 1
+fi
+
+CRAZYLIMS_RUNTIME="$("${RUNTIME_HELPER}" runtime)"
+
+case "${CRAZYLIMS_RUNTIME}" in
+  docker|local)
+    ;;
+  *)
+    echo "CRAZYLIMS_RUNTIME must be 'docker' or 'local'" >&2
+    exit 1
+    ;;
+esac
+
 if [[ -n "${PSQL_COMMAND_OVERRIDE}" ]]; then
   # shellcheck disable=SC2206
   PSQL_CMD=(${PSQL_COMMAND_OVERRIDE})
-elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+elif [[ "${CRAZYLIMS_RUNTIME}" == "docker" ]]; then
   PSQL_CMD=(docker compose exec -T db psql -U dev -d lims)
 else
   DB_HOST="${DB_HOST:-127.0.0.1}"
@@ -21,9 +38,14 @@ else
   PSQL_CMD=(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_APP_USER}" -d "${DB_NAME}")
 fi
 JWT_DIR="${ROOT_DIR}/ops/examples/jwts"
-# Default to Docker service hostnames inside devcontainer; caller can override.
-POSTGREST_URL="${POSTGREST_URL:-http://postgrest:3000}"
-POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://postgraphile:3001/graphql}"
+
+if [[ "${CRAZYLIMS_RUNTIME}" == "docker" ]]; then
+  POSTGREST_URL="${POSTGREST_URL:-http://postgrest:3000}"
+  POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://postgraphile:3001/graphql}"
+else
+  POSTGREST_URL="${POSTGREST_URL:-http://localhost:3000}"
+  POSTGRAPHILE_URL="${POSTGRAPHILE_URL:-http://localhost:3001/graphql}"
+fi
 
 failures=0
 last_body=""

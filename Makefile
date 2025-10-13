@@ -2,8 +2,18 @@ SHELL := /bin/bash
 
 .PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security db/test
 
-DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
-USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
+CRAZYLIMS_RUNTIME ?= $(shell ./ops/bin/runtime.sh runtime)
+
+ifeq ($(CRAZYLIMS_RUNTIME),docker)
+USE_DOCKER := yes
+else ifeq ($(CRAZYLIMS_RUNTIME),local)
+USE_DOCKER := no
+else
+$(error CRAZYLIMS_RUNTIME must be docker or local)
+endif
+
+export CRAZYLIMS_RUNTIME
+export USE_DOCKER
 
 POSTGREST_PORT ?= 3000
 POSTGRAPHILE_PORT ?= 3001

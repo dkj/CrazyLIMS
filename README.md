@@ -26,6 +26,10 @@ make ci
 
 The `dev` service defined in `docker-compose.yml` is used by the devcontainer; when Docker is unavailable the Makefile transparently drives the local helper described below.
 
+### Choosing the runtime
+
+Helpers across the repo consult a single runtime resolver that prefers Docker when available. Override the selection explicitly by exporting `CRAZYLIMS_RUNTIME=local` (or `USE_DOCKER=no`) before invoking `make` or the scripts under `ops/`/`scripts/`. Setting `CRAZYLIMS_RUNTIME=docker` (or `USE_DOCKER=yes`) requires Docker Compose v2 to be installed; the helpers fail fast with a descriptive error when the request cannot be satisfied.
+
 ### Running without Docker (Codex-friendly)
 
 When Docker cannot be used (e.g. Codespaces-lite/Codex sandboxes), the `scripts/local_dev.sh` helper provisions a private PostgreSQL cluster under `.localdev/`, downloads PostgREST/PostGraphile binaries, and keeps process management out of band from Docker Compose.

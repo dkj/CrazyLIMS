@@ -5,6 +5,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 cd "${REPO_ROOT}" >/dev/null
 
+RUNTIME_HELPER="${REPO_ROOT}/ops/bin/runtime.sh"
+if [[ ! -r "${RUNTIME_HELPER}" ]]; then
+  echo "Runtime helper not found at ${RUNTIME_HELPER}" >&2
+  exit 1
+fi
+
+# shellcheck source=../../bin/runtime.sh
+source "${RUNTIME_HELPER}"
+
+resolve_dbmate_runtime() {
+  local forced_setting
+
+  if forced_setting="$(crazylims_normalize_bool "${DBMATE_USE_DOCKER:-}")"; then
+    if [[ "${forced_setting}" == "1" ]]; then
+      if ! crazylims_docker_available; then
+        echo "DBMATE_USE_DOCKER was set but Docker is not available" >&2
+        exit 1
+      fi
+      printf 'docker\n'
+      return
+    fi
+    printf 'local\n'
+    return
+  fi
+
+  if forced_setting="$(crazylims_normalize_bool "${DBMATE_NO_DOCKER:-}")"; then
+    if [[ "${forced_setting}" == "1" ]]; then
+      printf 'local\n'
+      return
+    fi
+  fi
+
+  if forced_setting="$(crazylims_normalize_bool "${DBMATE_FORCE_LOCAL:-}")"; then
+    if [[ "${forced_setting}" == "1" ]]; then
+      printf 'local\n'
+      return
+    fi
+  fi
+
+  printf '%s\n' "$(crazylims_resolve_runtime)"
+}
+
 ensure_local_dbmate() {
   local target_dir="${REPO_ROOT}/.local/bin"
   local target_bin="${target_dir}/dbmate"
@@ -35,23 +77,19 @@ ensure_local_dbmate() {
   printf '%s\n' "${target_bin}"
 }
 
-use_docker() {
-  if [[ "${DBMATE_NO_DOCKER:-}" == "1" ]]; then
-    return 1
+if [[ -n "${DBMATE_RUNTIME:-}" ]]; then
+  if ! DBMATE_RUNTIME="$(crazylims_normalize_runtime "${DBMATE_RUNTIME}")"; then
+    echo "DBMATE_RUNTIME must be 'docker' or 'local'" >&2
+    exit 1
   fi
-  if [[ "${DBMATE_FORCE_LOCAL:-}" == "1" ]]; then
-    return 1
-  fi
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    return 0
-  fi
-  return 1
-}
+else
+  DBMATE_RUNTIME="$(resolve_dbmate_runtime)"
+fi
 
 DEFAULT_DOCKER_URL="postgres://postgres:postgres@db:5432/lims?sslmode=disable"
 DEFAULT_LOCAL_URL="postgres://postgres:postgres@127.0.0.1:${LOCAL_DB_PORT:-6432}/lims?sslmode=disable"
 
-if use_docker; then
+if [[ "${DBMATE_RUNTIME}" == "docker" ]]; then
   DEFAULT_DATABASE_URL="${DEFAULT_DOCKER_URL}"
 else
   DEFAULT_DATABASE_URL="${DEFAULT_LOCAL_URL}"
@@ -64,30 +102,11 @@ if [[ ! -d ops/db/migrations ]]; then
   exit 1
 fi
 
-if use_docker; then
+if [[ "${DBMATE_RUNTIME}" == "docker" ]]; then
   export DBMATE_MIGRATIONS_DIR="/db/migrations"
   export DBMATE_SCHEMA_FILE="/db/schema.sql"
 
-  HOST_REPO_ROOT="${LOCAL_WORKSPACE_FOLDER:-}"
-
-  if [[ -z "${HOST_REPO_ROOT}" ]]; then
-    DEV_CONTAINER_ID="$(docker compose ps -q dev 2>/dev/null | head -n1 || true)"
-    if [[ -n "${DEV_CONTAINER_ID}" ]]; then
-      TEMPLATE="{{range .Mounts}}{{if eq .Destination \"${REPO_ROOT}\"}}{{.Source}}{{end}}{{end}}"
-      HOST_REPO_ROOT="$(docker inspect -f "${TEMPLATE}" "${DEV_CONTAINER_ID}" 2>/dev/null || true)"
-
-      if [[ -z "${HOST_REPO_ROOT}" ]]; then
-        FALLBACK_TEMPLATE='{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}'
-        FALLBACK_SOURCE="$(docker inspect -f "${FALLBACK_TEMPLATE}" "${DEV_CONTAINER_ID}" 2>/dev/null || true)"
-        if [[ -n "${FALLBACK_SOURCE}" && "${REPO_ROOT}" == /workspace* ]]; then
-          RELATIVE_PATH="${REPO_ROOT#/workspace}"
-          HOST_REPO_ROOT="${FALLBACK_SOURCE}${RELATIVE_PATH}"
-        fi
-      fi
-    fi
-  fi
-
-  HOST_REPO_ROOT="${HOST_REPO_ROOT:-$REPO_ROOT}"
+  HOST_REPO_ROOT="$(crazylims_resolve_host_repo_root "${REPO_ROOT}")"
 
   exec docker compose run --rm \
     -e "DATABASE_URL=${DATABASE_URL}" \
