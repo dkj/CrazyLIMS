@@ -48,7 +48,8 @@ JOIN app_provenance.artefacts container
   ON container.artefact_id = cs.container_artefact_id
 LEFT JOIN app_provenance.artefacts occupant
   ON occupant.container_slot_id = cs.container_slot_id
- AND occupant.container_artefact_id = cs.container_artefact_id;
+ AND occupant.container_artefact_id = cs.container_artefact_id
+ AND occupant.status IN ('draft','active','reserved');
 
 CREATE OR REPLACE VIEW app_provenance.v_accessible_artefacts AS
 SELECT

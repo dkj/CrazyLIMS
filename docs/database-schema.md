@@ -95,12 +95,12 @@ Views `app_security.v_transaction_context_activity` and `app_security.v_audit_re
 
 ### Containment & Storage
 
-The containment layer now models wells as artefacts instead of maintaining a separate assignment table. A plate artefact owns a set of well artefacts (A01…H12) that inherit their positional metadata from `container_slots`. Each well artefact persists its `container_artefact_id` and `container_slot_id`, so labware lookups and quantity updates operate on the same row that holds QC traits and measurements.
+The containment layer now models wells as artefacts instead of maintaining a separate assignment table. A plate artefact owns a set of well artefacts (A01…H12) that inherit their positional metadata from `container_slots`. Each well artefact persists its `container_artefact_id` and `container_slot_id`, so labware lookups and quantity updates operate on the same row that holds QC traits and measurements. Uniqueness on `container_slot_id` only applies to artefacts whose status is `draft`, `active`, or `reserved`, allowing processes that transform material in-place to retire the previous artefact (`status = 'consumed'`, etc.) and immediately register the replacement occupant while keeping the history intact.
 
 | Table | Purpose | Highlights |
 | --- | --- | --- |
 | `container_slot_definitions` / `container_slots` | Physical layout of labware | Slot definitions provide the blueprint; slots can be instantiated per container artefact |
-| Physical well artefacts | One artefact per instantiated slot | Wells inherit coordinates from `container_slots` but live in `app_provenance.artefacts`; `container_slot_id` is unique per artefact; traits capture volume, concentration, fragment metrics, QC status |
+| Physical well artefacts | One artefact per instantiated slot | Wells inherit coordinates from `container_slots` but live in `app_provenance.artefacts`; `container_slot_id` remains unique for live (`draft`/`active`/`reserved`) artefacts, while retired occupants can coexist for provenance; traits capture volume, concentration, fragment metrics, QC status |
 | `storage_nodes` | Hierarchical storage tree | Facility → unit → sublocation; joins into `app_security.scopes` |
 | `artefact_storage_events` | Movement history | `from_storage_node_id`, `to_storage_node_id`, `event_type`, actor and reason; audit-triggered |
 

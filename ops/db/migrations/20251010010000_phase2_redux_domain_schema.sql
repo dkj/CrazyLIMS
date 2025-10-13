@@ -249,7 +249,8 @@ ALTER TABLE app_provenance.artefacts
 
 CREATE UNIQUE INDEX idx_artefact_slot_unique
   ON app_provenance.artefacts(container_slot_id)
-  WHERE container_slot_id IS NOT NULL;
+  WHERE container_slot_id IS NOT NULL
+    AND status IN ('draft','active','reserved');
 
 -------------------------------------------------------------------------------
 -- Storage hierarchy and events

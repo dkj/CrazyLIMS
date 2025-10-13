@@ -45,6 +45,12 @@ Consider a 96-well plate loaded with size-selected DNA libraries destined for no
 
 At no point do we maintain a separate “sample-to-well assignment” row—the well artefact *is* the sample. Provenance edges express derivations, and the trait history captures how instruments or humans updated measurements over time.
 
+## When Contents Change but the Container Does Not
+
+Some processes alter the nature of the material without swapping the underlying labware—for example, fragmenting DNA by sonication, adding enzymes to a tube, or spinning whole blood so that plasma separates from the cellular pellet. In these scenarios the LIMS records a **new physical artefact** that occupies the same well or tube, linked back to the previous contents via `artefact_relationships` and the `process_io` records for the transformation step. The prior artefact is marked with a terminal status such as `consumed`, `completed`, or `retired`, signalling that it no longer actively occupies the slot.
+
+Because the `app_provenance.artefacts` table only enforces unique container occupancy for artefacts whose status is `draft`, `active`, or `reserved`, the replacement artefact can reuse the same `container_slot_id`. Views like `app_provenance.v_container_contents` already filter to those live statuses, so downstream labware browsers automatically surface the latest material while the historical record remains queryable for provenance and audit purposes.
+
 ## Access Control & Scoping
 
 - Artefacts and processes are tagged to scopes using `artefact_scopes` and `process_scopes`. Scopes cascade permissions via the scope inheritance fabric defined in Phase 1 Redux (`app_security.scopes`, `scope_memberships`, `scope_role_inheritance`).
