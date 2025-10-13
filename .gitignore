@@ -1,5 +1,6 @@
 db.session.sql
 .local/
 .localdev/
-ops/postgraphile/node_modules/
-ui/node_modules/
+ops/db/bin/dbmate.local
+ops/db/bin/postgrest
+ops/db/bin/postgraphile

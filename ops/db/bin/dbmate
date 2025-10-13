@@ -39,12 +39,11 @@ docker_compose_available() {
   command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
 }
 
-resolve_mode() {
-  local mode="${DBMATE_MODE:-auto}"
-
-  case "${mode}" in
+resolve_runtime() {
+  local runtime="${DEV_RUNTIME:-auto}"
+  case "${runtime}" in
     docker|local)
-      printf '%s\n' "${mode}"
+      printf '%s\n' "${runtime}"
       ;;
     auto|"")
       if docker_compose_available; then
@@ -54,33 +53,26 @@ resolve_mode() {
       fi
       ;;
     *)
-      echo "Unsupported DBMATE_MODE value: ${mode}" >&2
+      echo "Unsupported DEV_RUNTIME value: ${runtime}" >&2
       exit 1
       ;;
   esac
 }
-
-DEFAULT_DOCKER_URL="postgres://postgres:postgres@db:5432/lims?sslmode=disable"
-DEFAULT_LOCAL_URL="postgres://postgres:postgres@127.0.0.1:${LOCAL_DB_PORT:-6432}/lims?sslmode=disable"
-
-MODE="$(resolve_mode)"
-
-if [[ "${MODE}" == "docker" ]]; then
-  DEFAULT_DATABASE_URL="${DEFAULT_DOCKER_URL}"
-else
-  DEFAULT_DATABASE_URL="${DEFAULT_LOCAL_URL}"
-fi
-
-DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
 
 if [[ ! -d ops/db/migrations ]]; then
   echo "Expected ops/db/migrations directory not found" >&2
   exit 1
 fi
 
+MODE="$(resolve_runtime)"
+
+DEFAULT_DOCKER_URL="postgres://postgres:postgres@db:5432/lims?sslmode=disable"
+DEFAULT_LOCAL_URL="postgres://postgres:postgres@127.0.0.1:${LOCAL_DB_PORT:-6432}/lims?sslmode=disable"
+
 if [[ "${MODE}" == "docker" ]]; then
   export DBMATE_MIGRATIONS_DIR="/db/migrations"
   export DBMATE_SCHEMA_FILE="/db/schema.sql"
+  DATABASE_URL="${DATABASE_URL:-$DEFAULT_DOCKER_URL}"
 
   HOST_REPO_ROOT="${LOCAL_WORKSPACE_FOLDER:-}"
 
@@ -113,6 +105,7 @@ if [[ "${MODE}" == "docker" ]]; then
 else
   export DBMATE_MIGRATIONS_DIR="${DBMATE_MIGRATIONS_DIR:-${REPO_ROOT}/ops/db/migrations}"
   export DBMATE_SCHEMA_FILE="${DBMATE_SCHEMA_FILE:-${REPO_ROOT}/ops/db/schema.sql}"
+  DATABASE_URL="${DATABASE_URL:-$DEFAULT_LOCAL_URL}"
 
   DBMATE_BIN="${DBMATE_BIN:-$(ensure_local_dbmate)}"
   exec "${DBMATE_BIN}" -d "${DBMATE_MIGRATIONS_DIR}" -s "${DBMATE_SCHEMA_FILE}" "$@"

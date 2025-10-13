@@ -56,8 +56,8 @@ Additional helper commands:
 
 | Target | Description |
 | --- | --- |
-| `make up` | Build and start Postgres, PostgREST, PostGraphile, and the dev helper container. |
-| `make down` | Stop containers and remove volumes. |
+| `make up` | Start Postgres, PostgREST, and PostGraphile via Docker Compose or the local helper. |
+| `make down` | Stop the active runtime (containers or local helper) and clean up state. |
 | `make db/reset` | Drop/recreate the `lims` database and reapply migrations via dbmate. |
 | `make db/test` | Run SQL regression checks (transaction contexts, audit hooks, RLS). |
 | `make contracts/export` | Regenerate OpenAPI (PostgREST) and GraphQL schema snapshots. |
