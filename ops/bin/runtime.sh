@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Returns 0 when Docker Compose v2 is available, 1 otherwise.
+# Cache Docker availability so repeated lookups are cheap.
+_crazylims_docker_status=""
+
 crazylims_docker_available() {
-  if ! command -v docker >/dev/null 2>&1; then
-    return 1
+  if [[ -z "${_crazylims_docker_status}" ]]; then
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+      _crazylims_docker_status="yes"
+    else
+      _crazylims_docker_status="no"
+    fi
   fi
-  docker compose version >/dev/null 2>&1 || return 1
-  return 0
+
+  [[ "${_crazylims_docker_status}" == "yes" ]]
 }
 
 # Normalizes yes/no style values into 1/0. Returns 1 on invalid input.
@@ -42,9 +48,16 @@ crazylims_normalize_runtime() {
   esac
 }
 
+_crazylims_resolved_runtime=""
+
 # Resolves the runtime (docker|local) honoring overrides when present.
 crazylims_resolve_runtime() {
-  local requested="" legacy="" value
+  if [[ -n "${_crazylims_resolved_runtime}" ]]; then
+    printf '%s\n' "${_crazylims_resolved_runtime}"
+    return
+  fi
+
+  local requested="" value legacy
 
   if [[ -n "${CRAZYLIMS_RUNTIME:-}" ]]; then
     if ! value="$(crazylims_normalize_runtime "${CRAZYLIMS_RUNTIME}")"; then
@@ -59,7 +72,11 @@ crazylims_resolve_runtime() {
       echo "USE_DOCKER must be a boolean (yes/no/true/false/1/0)" >&2
       exit 1
     fi
-    legacy=$([[ "${value}" == "1" ]] && printf 'docker' || printf 'local')
+    if [[ "${value}" == "1" ]]; then
+      legacy="docker"
+    else
+      legacy="local"
+    fi
     if [[ -n "${requested}" && "${requested}" != "${legacy}" ]]; then
       echo "CRAZYLIMS_RUNTIME and USE_DOCKER conflict" >&2
       exit 1
@@ -80,7 +97,16 @@ crazylims_resolve_runtime() {
     exit 1
   fi
 
+  _crazylims_resolved_runtime="${requested}"
   printf '%s\n' "${requested}"
+}
+
+crazylims_resolve_use_docker() {
+  if [[ "$(crazylims_resolve_runtime)" == "docker" ]]; then
+    printf 'yes\n'
+  else
+    printf 'no\n'
+  fi
 }
 
 # Resolves the repository root on the host when running from a dev container.
@@ -96,7 +122,7 @@ crazylims_resolve_host_repo_root() {
     return
   fi
 
-  if ! command -v docker >/dev/null 2>&1; then
+  if ! crazylims_docker_available; then
     printf '%s\n' "${repo_root}"
     return
   fi
@@ -130,6 +156,9 @@ crazylims_runtime_cli() {
     runtime)
       crazylims_resolve_runtime
       ;;
+    use-docker)
+      crazylims_resolve_use_docker
+      ;;
     docker-available)
       if crazylims_docker_available; then
         exit 0
@@ -141,7 +170,7 @@ crazylims_runtime_cli() {
       crazylims_resolve_host_repo_root "$@"
       ;;
     "")
-      echo "usage: $0 <runtime|docker-available|host-repo-root>" >&2
+      echo "usage: $0 <runtime|use-docker|docker-available|host-repo-root>" >&2
       exit 1
       ;;
     *)

@@ -6,10 +6,8 @@ CRAZYLIMS_RUNTIME ?= $(shell ./ops/bin/runtime.sh runtime)
 
 ifeq ($(CRAZYLIMS_RUNTIME),docker)
 USE_DOCKER := yes
-else ifeq ($(CRAZYLIMS_RUNTIME),local)
-USE_DOCKER := no
 else
-$(error CRAZYLIMS_RUNTIME must be docker or local)
+USE_DOCKER := no
 endif
 
 export CRAZYLIMS_RUNTIME

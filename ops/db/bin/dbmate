@@ -15,7 +15,7 @@ fi
 source "${RUNTIME_HELPER}"
 
 resolve_dbmate_runtime() {
-  local forced_setting
+  local forced_setting var_name
 
   if forced_setting="$(crazylims_normalize_bool "${DBMATE_USE_DOCKER:-}")"; then
     if [[ "${forced_setting}" == "1" ]]; then
@@ -30,19 +30,14 @@ resolve_dbmate_runtime() {
     return
   fi
 
-  if forced_setting="$(crazylims_normalize_bool "${DBMATE_NO_DOCKER:-}")"; then
-    if [[ "${forced_setting}" == "1" ]]; then
-      printf 'local\n'
-      return
+  for var_name in DBMATE_NO_DOCKER DBMATE_FORCE_LOCAL; do
+    if forced_setting="$(crazylims_normalize_bool "${!var_name:-}")"; then
+      if [[ "${forced_setting}" == "1" ]]; then
+        printf 'local\n'
+        return
+      fi
     fi
-  fi
-
-  if forced_setting="$(crazylims_normalize_bool "${DBMATE_FORCE_LOCAL:-}")"; then
-    if [[ "${forced_setting}" == "1" ]]; then
-      printf 'local\n'
-      return
-    fi
-  fi
+  done
 
   printf '%s\n' "$(crazylims_resolve_runtime)"
 }

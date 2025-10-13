@@ -28,7 +28,7 @@ The `dev` service defined in `docker-compose.yml` is used by the devcontainer; w
 
 ### Choosing the runtime
 
-Helpers across the repo consult a single runtime resolver that prefers Docker when available. Override the selection explicitly by exporting `CRAZYLIMS_RUNTIME=local` (or `USE_DOCKER=no`) before invoking `make` or the scripts under `ops/`/`scripts/`. Setting `CRAZYLIMS_RUNTIME=docker` (or `USE_DOCKER=yes`) requires Docker Compose v2 to be installed; the helpers fail fast with a descriptive error when the request cannot be satisfied.
+Helpers across the repo consult a single runtime resolver that prefers Docker when available. Override the selection explicitly by exporting `CRAZYLIMS_RUNTIME=local` (or `USE_DOCKER=no`) before invoking `make` or the scripts under `ops/`/`scripts/`. Setting `CRAZYLIMS_RUNTIME=docker` (or `USE_DOCKER=yes`) requires Docker Compose v2 to be installed; the helpers fail fast with a descriptive error when the request cannot be satisfied. You can introspect the resolved choice with `./ops/bin/runtime.sh runtime` or ask for the derived yes/no flag via `./ops/bin/runtime.sh use-docker`.
 
 ### Running without Docker (Codex-friendly)
 
