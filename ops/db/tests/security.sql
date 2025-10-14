@@ -268,7 +268,7 @@ SET ROLE app_admin;
 DO $$
 DECLARE
   v_admin_id uuid;
-  v_count integer;
+  v_samples text[];
 BEGIN
   SELECT id INTO v_admin_id
   FROM app_core.users
@@ -282,14 +282,18 @@ BEGIN
   PERFORM set_config('app.actor_identity', 'admin@example.org', false);
   PERFORM set_config('app.roles', 'app_admin', false);
 
-  SELECT count(*) INTO v_count
-  FROM app_core.v_labware_contents
-  WHERE barcode = 'TUBE-0001'
-    AND sample_name = 'Serum QC Control Sample'
-    AND position_label IS NULL;
+  SELECT array_agg(sample_name ORDER BY sample_name)
+    INTO v_samples
+    FROM app_core.v_labware_contents
+   WHERE barcode = 'TUBE-0001'
+     AND position_label IS NULL;
 
-  IF v_count = 0 THEN
-    RAISE EXCEPTION 'Slotless labware sample missing from contents view';
+  IF v_samples IS NULL OR array_length(v_samples, 1) <> 2 THEN
+    RAISE EXCEPTION 'Slotless labware sample set unexpected: %', v_samples;
+  END IF;
+
+  IF v_samples <> ARRAY['Organoid Expansion Batch RDX-01 Cryo Backup', 'Serum QC Control Sample'] THEN
+    RAISE EXCEPTION 'Slotless labware sample set mismatch: %', v_samples;
   END IF;
 END;
 $$;
