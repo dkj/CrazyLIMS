@@ -301,6 +301,46 @@ $$;
 RESET ROLE;
 
 -------------------------------------------------------------------------------
+-- Convenience views include slotted plate labware contents
+-------------------------------------------------------------------------------
+
+SET ROLE app_admin;
+
+DO $$
+DECLARE
+  v_admin_id uuid;
+  v_positions text[];
+BEGIN
+  SELECT id INTO v_admin_id
+  FROM app_core.users
+  WHERE email = 'admin@example.org';
+
+  IF v_admin_id IS NULL THEN
+    RAISE EXCEPTION 'Admin seed user missing';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_admin_id::text, false);
+  PERFORM set_config('app.actor_identity', 'admin@example.org', false);
+  PERFORM set_config('app.roles', 'app_admin', false);
+
+  SELECT array_agg(format('%s:%s', position_label, sample_name) ORDER BY position_label, sample_name)
+    INTO v_positions
+    FROM app_core.v_labware_contents
+   WHERE barcode = 'PLATE-0007';
+
+  IF v_positions IS NULL OR array_length(v_positions, 1) <> 2 THEN
+    RAISE EXCEPTION 'Slotted plate labware sample set unexpected: %', v_positions;
+  END IF;
+
+  IF v_positions <> ARRAY['A1:Plasma Aliquot GP-001-A', 'A2:Plasma Prep Buffer Lot 42'] THEN
+    RAISE EXCEPTION 'Slotted plate labware sample set mismatch: %', v_positions;
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+-------------------------------------------------------------------------------
 -- RLS behaviour for operator persona
 -------------------------------------------------------------------------------
 
