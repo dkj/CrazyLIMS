@@ -709,27 +709,17 @@ BEGIN
 
     IF EXISTS (
       SELECT 1
-      FROM app_provenance.artefact_container_assignments
-      WHERE artefact_id = v_sample_id
-        AND released_at IS NULL
+      FROM app_provenance.artefacts a
+      WHERE a.artefact_id = v_sample_id
+        AND a.container_artefact_id IS NOT NULL
     ) THEN
       CONTINUE;
     END IF;
 
-    INSERT INTO app_provenance.artefact_container_assignments (
-      artefact_id,
-      container_artefact_id,
-      assigned_at,
-      assigned_by,
-      metadata
-    )
-    VALUES (
-      v_sample_id,
-      v_container_id,
-      clock_timestamp() - interval '3 days',
-      COALESCE(v_operator, v_admin),
-      jsonb_build_object('seed', v_seed_tag)
-    );
+    UPDATE app_provenance.artefacts
+    SET container_artefact_id = v_container_id
+    WHERE artefact_id = v_sample_id
+      AND container_artefact_id IS NULL;
   END LOOP;
   ---------------------------------------------------------------------------
   -- Storage hierarchy touch-up for legacy shelf references
@@ -856,7 +846,10 @@ BEGIN
   PERFORM set_config('app.roles', 'app_admin', true);
 
   DELETE FROM app_provenance.artefact_storage_events WHERE metadata ->> 'seed' = v_seed_tag;
-  DELETE FROM app_provenance.artefact_container_assignments WHERE metadata ->> 'seed' = v_seed_tag;
+  UPDATE app_provenance.artefacts
+  SET container_slot_id = NULL,
+      container_artefact_id = NULL
+  WHERE metadata ->> 'seed' = v_seed_tag;
   DELETE FROM app_provenance.artefact_scopes WHERE metadata ->> 'seed' = v_seed_tag;
   DELETE FROM app_provenance.artefact_relationships WHERE metadata ->> 'seed' = v_seed_tag;
   DELETE FROM app_provenance.artefacts WHERE metadata ->> 'seed' = v_seed_tag;

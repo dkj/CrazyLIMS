@@ -36,21 +36,20 @@ SELECT
   cs.slot_name,
   cs.display_name AS slot_display_name,
   cs.position,
-  aca.artefact_id,
+  occupant.artefact_id,
   occupant.name AS artefact_name,
   occupant.status AS artefact_status,
-  aca.assigned_at,
-  aca.released_at,
-  aca.quantity,
-  aca.quantity_unit
+  occupant.quantity,
+  occupant.quantity_unit,
+  occupant.created_at AS occupied_at,
+  occupant.updated_at AS last_updated_at
 FROM app_provenance.container_slots cs
 JOIN app_provenance.artefacts container
   ON container.artefact_id = cs.container_artefact_id
-LEFT JOIN app_provenance.artefact_container_assignments aca
-  ON aca.container_slot_id = cs.container_slot_id
- AND aca.released_at IS NULL
 LEFT JOIN app_provenance.artefacts occupant
-  ON occupant.artefact_id = aca.artefact_id;
+  ON occupant.container_slot_id = cs.container_slot_id
+ AND occupant.container_artefact_id = cs.container_artefact_id
+ AND occupant.status IN ('draft','active','reserved');
 
 CREATE OR REPLACE VIEW app_provenance.v_accessible_artefacts AS
 SELECT

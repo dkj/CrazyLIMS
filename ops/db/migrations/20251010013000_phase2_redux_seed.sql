@@ -644,18 +644,19 @@ BEGIN
   -- Container assignments and storage events
   ---------------------------------------------------------------------------
 
-  INSERT INTO app_provenance.artefact_container_assignments (
-    artefact_id,
-    container_artefact_id,
-    container_slot_id,
-    assigned_at,
-    assigned_by,
-    metadata
-  )
-  VALUES
-    (v_sample, v_plate_container, v_slot_a1, clock_timestamp() - interval '12 days', v_operator, jsonb_build_object('seed','phase2-redux','volume_ul',1200)),
-    (v_reagent, v_plate_container, v_slot_a2, clock_timestamp() - interval '15 days', v_operator, jsonb_build_object('seed','phase2-redux','volume_ul',20000))
-  ON CONFLICT DO NOTHING;
+  UPDATE app_provenance.artefacts
+  SET
+    container_artefact_id = v_plate_container,
+    container_slot_id = v_slot_a1,
+    metadata = metadata || jsonb_build_object('well_volume_ul', 1200)
+  WHERE artefact_id = v_sample;
+
+  UPDATE app_provenance.artefacts
+  SET
+    container_artefact_id = v_plate_container,
+    container_slot_id = v_slot_a2,
+    metadata = metadata || jsonb_build_object('well_volume_ul', 20000)
+  WHERE artefact_id = v_reagent;
 
   INSERT INTO app_provenance.artefact_storage_events (
     artefact_id,
@@ -684,7 +685,10 @@ $$;
 DO $$
 BEGIN
   DELETE FROM app_provenance.artefact_storage_events WHERE metadata ->> 'seed' = 'phase2-redux';
-  DELETE FROM app_provenance.artefact_container_assignments WHERE metadata ->> 'seed' = 'phase2-redux';
+  UPDATE app_provenance.artefacts
+  SET container_slot_id = NULL,
+      container_artefact_id = NULL
+  WHERE metadata ->> 'seed' = 'phase2-redux';
   DELETE FROM app_provenance.container_slots WHERE metadata ->> 'seed' = 'phase2-redux';
   DELETE FROM app_provenance.container_slot_definitions WHERE metadata ->> 'seed' = 'phase2-redux';
   DELETE FROM app_provenance.artefact_trait_values WHERE metadata ->> 'seed' = 'phase2-redux';

@@ -108,14 +108,10 @@ LEFT JOIN LATERAL (
     lab.name AS labware_name,
     COALESCE(lab.metadata->>'barcode', lab.external_identifier) AS labware_barcode,
     app_provenance.storage_path(loc.storage_node_id) AS storage_path
-  FROM app_provenance.artefact_container_assignments aca
-  JOIN app_provenance.artefacts lab
-    ON lab.artefact_id = aca.container_artefact_id
+  FROM app_provenance.artefacts lab
   LEFT JOIN app_provenance.v_artefact_current_location loc
     ON loc.artefact_id = lab.artefact_id
-  WHERE aca.artefact_id = sample.artefact_id
-    AND aca.released_at IS NULL
-  ORDER BY aca.assigned_at DESC
+  WHERE lab.artefact_id = sample.container_artefact_id
   LIMIT 1
 ) AS lab_assoc ON TRUE
 LEFT JOIN LATERAL (
@@ -155,20 +151,18 @@ SELECT
   sample.artefact_id AS sample_id,
   sample.name AS sample_name,
   sample.status AS sample_status,
-  aca.quantity AS volume,
-  aca.quantity_unit AS volume_unit,
+  sample.quantity AS volume,
+  sample.quantity_unit AS volume_unit,
   loc.storage_node_id AS current_storage_sublocation_id,
   app_provenance.storage_path(loc.storage_node_id) AS storage_path
 FROM app_provenance.artefacts lab
 JOIN app_provenance.artefact_types lab_type
   ON lab_type.artefact_type_id = lab.artefact_type_id
-LEFT JOIN app_provenance.container_slots slot
-  ON slot.container_artefact_id = lab.artefact_id
-LEFT JOIN app_provenance.artefact_container_assignments aca
-  ON aca.container_slot_id = slot.container_slot_id
- AND aca.released_at IS NULL
 LEFT JOIN app_provenance.artefacts sample
-  ON sample.artefact_id = aca.artefact_id
+  ON sample.container_artefact_id = lab.artefact_id
+LEFT JOIN app_provenance.container_slots slot
+  ON slot.container_slot_id = sample.container_slot_id
+ AND slot.container_artefact_id = lab.artefact_id
 LEFT JOIN app_provenance.v_artefact_current_location loc
   ON loc.artefact_id = lab.artefact_id
 WHERE lab_type.kind = 'container'
@@ -181,12 +175,12 @@ GRANT SELECT ON app_core.v_labware_contents TO app_auth;
 -------------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW app_core.v_labware_inventory AS
-WITH active_assignments AS (
+WITH labware_samples AS (
   SELECT
-    aca.container_artefact_id AS labware_id,
-    aca.artefact_id AS sample_id
-  FROM app_provenance.artefact_container_assignments aca
-  WHERE aca.released_at IS NULL
+    a.container_artefact_id AS labware_id,
+    a.artefact_id AS sample_id
+  FROM app_provenance.artefacts a
+  WHERE a.container_artefact_id IS NOT NULL
 )
 SELECT
   lab.artefact_id AS labware_id,
@@ -196,9 +190,9 @@ SELECT
   lab_type.type_key AS labware_type,
   loc.storage_node_id AS current_storage_sublocation_id,
   app_provenance.storage_path(loc.storage_node_id) AS storage_path,
-  COUNT(DISTINCT aa.sample_id) AS active_sample_count,
+  COUNT(DISTINCT ls.sample_id) AS active_sample_count,
   CASE
-    WHEN COUNT(aa.sample_id) = 0 THEN NULL
+    WHEN COUNT(ls.sample_id) = 0 THEN NULL
     ELSE jsonb_agg(
       DISTINCT jsonb_build_object(
         'sample_id', sample.artefact_id,
@@ -210,10 +204,10 @@ SELECT
 FROM app_provenance.artefacts lab
 JOIN app_provenance.artefact_types lab_type
   ON lab_type.artefact_type_id = lab.artefact_type_id
-LEFT JOIN active_assignments aa
-  ON aa.labware_id = lab.artefact_id
+LEFT JOIN labware_samples ls
+  ON ls.labware_id = lab.artefact_id
 LEFT JOIN app_provenance.artefacts sample
-  ON sample.artefact_id = aa.sample_id
+  ON sample.artefact_id = ls.sample_id
 LEFT JOIN app_provenance.v_artefact_current_location loc
   ON loc.artefact_id = lab.artefact_id
 WHERE lab_type.kind = 'container'
@@ -337,14 +331,10 @@ LEFT JOIN LATERAL (
     COALESCE(lab.metadata->>'barcode', lab.external_identifier) AS labware_barcode,
     lab.name AS labware_name,
     app_provenance.storage_path(loc.storage_node_id) AS storage_path
-  FROM app_provenance.artefact_container_assignments aca
-  JOIN app_provenance.artefacts lab
-    ON lab.artefact_id = aca.container_artefact_id
+  FROM app_provenance.artefacts lab
   LEFT JOIN app_provenance.v_artefact_current_location loc
     ON loc.artefact_id = lab.artefact_id
-  WHERE aca.artefact_id = parent.artefact_id
-    AND aca.released_at IS NULL
-  ORDER BY aca.assigned_at DESC
+  WHERE lab.artefact_id = parent.container_artefact_id
   LIMIT 1
 ) AS lab_parent ON TRUE
 LEFT JOIN LATERAL (
@@ -353,14 +343,10 @@ LEFT JOIN LATERAL (
     COALESCE(lab.metadata->>'barcode', lab.external_identifier) AS labware_barcode,
     lab.name AS labware_name,
     app_provenance.storage_path(loc.storage_node_id) AS storage_path
-  FROM app_provenance.artefact_container_assignments aca
-  JOIN app_provenance.artefacts lab
-    ON lab.artefact_id = aca.container_artefact_id
+  FROM app_provenance.artefacts lab
   LEFT JOIN app_provenance.v_artefact_current_location loc
     ON loc.artefact_id = lab.artefact_id
-  WHERE aca.artefact_id = child.artefact_id
-    AND aca.released_at IS NULL
-  ORDER BY aca.assigned_at DESC
+  WHERE lab.artefact_id = child.container_artefact_id
   LIMIT 1
 ) AS lab_child ON TRUE
 WHERE parent_type.kind = 'material'
@@ -477,17 +463,17 @@ WITH actor_project_roles AS (
   SELECT DISTINCT
     lab.artefact_id AS labware_id,
     sc.scope_id
-  FROM app_provenance.artefact_container_assignments aca
+  FROM app_provenance.artefacts sample
+  JOIN app_provenance.artefact_types st
+    ON st.artefact_type_id = sample.artefact_type_id
   JOIN app_provenance.artefacts lab
-    ON lab.artefact_id = aca.container_artefact_id
+    ON lab.artefact_id = sample.container_artefact_id
   JOIN app_provenance.artefact_types lt
     ON lt.artefact_type_id = lab.artefact_type_id
-  JOIN app_provenance.artefacts sample
-    ON sample.artefact_id = aca.artefact_id
   JOIN app_provenance.artefact_scopes sc
     ON sc.artefact_id = sample.artefact_id
   WHERE lt.kind = 'container'
-    AND aca.released_at IS NULL
+    AND sample.container_artefact_id IS NOT NULL
     AND app_provenance.can_access_artefact(lab.artefact_id)
 )
 , labware_projects AS (

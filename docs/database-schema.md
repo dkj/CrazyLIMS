@@ -34,9 +34,8 @@ erDiagram
   APP_PROVENANCE_STORAGE_NODES ||--o{ APP_PROVENANCE_ARTEFACT_STORAGE_EVENTS : transitions
   APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACT_STORAGE_EVENTS : stored
 
-  APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACT_CONTAINER_ASSIGNMENTS : assigned
   APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_CONTAINER_SLOTS : defines_slots
-  APP_PROVENANCE_CONTAINER_SLOTS ||--o{ APP_PROVENANCE_ARTEFACT_CONTAINER_ASSIGNMENTS : fills
+  APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACTS : owns_wells
 ```
 
 ---
@@ -84,7 +83,7 @@ Views `app_security.v_transaction_context_activity` and `app_security.v_audit_re
 | --- | --- | --- |
 | `artefact_types` | Define material/container/data types | `type_key`, `kind` (`material`, `container`, `data`, etc.), display metadata |
 | `artefact_traits` & `artefact_trait_values` | Flexible attributes | Traits described once, values keyed by `artefact_id` + `trait_id`; supports numeric, boolean, text |
-| `artefacts` | Unified artefact model | Links to `artefact_types`; includes `status`, `metadata`, `origin_process_instance_id`, audit coverage |
+| `artefacts` | Unified artefact model | Links to `artefact_types`; includes `status`, `metadata`, `origin_process_instance_id`, audit coverage; physical material stores `container_artefact_id` / `container_slot_id` to anchor wells |
 
 ### Processes & Lineage
 
@@ -96,10 +95,12 @@ Views `app_security.v_transaction_context_activity` and `app_security.v_audit_re
 
 ### Containment & Storage
 
+The containment layer now models wells as artefacts instead of maintaining a separate assignment table. A plate artefact owns a set of well artefacts (A01…H12) that inherit their positional metadata from `container_slots`. Each well artefact persists its `container_artefact_id` and `container_slot_id`, so labware lookups and quantity updates operate on the same row that holds QC traits and measurements. Uniqueness on `container_slot_id` only applies to artefacts whose status is `draft`, `active`, or `reserved`, allowing processes that transform material in-place to retire the previous artefact (`status = 'consumed'`, etc.) and immediately register the replacement occupant while keeping the history intact.
+
 | Table | Purpose | Highlights |
 | --- | --- | --- |
 | `container_slot_definitions` / `container_slots` | Physical layout of labware | Slot definitions provide the blueprint; slots can be instantiated per container artefact |
-| `artefact_container_assignments` | Artefact → labware occupancy | Tracks assignment, release, quantity/unit, `metadata`, and `assigned_by`; RLS enforces scope access |
+| Physical well artefacts | One artefact per instantiated slot | Wells inherit coordinates from `container_slots` but live in `app_provenance.artefacts`; `container_slot_id` remains unique for live (`draft`/`active`/`reserved`) artefacts, while retired occupants can coexist for provenance; traits capture volume, concentration, fragment metrics, QC status |
 | `storage_nodes` | Hierarchical storage tree | Facility → unit → sublocation; joins into `app_security.scopes` |
 | `artefact_storage_events` | Movement history | `from_storage_node_id`, `to_storage_node_id`, `event_type`, actor and reason; audit-triggered |
 

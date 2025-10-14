@@ -16,14 +16,14 @@
 
 ### 1. Domain Model Convergence
 - Design canonical tables (`artefacts`, `artefact_types`, `artefact_traits`, `process_instances`, `process_io`, `artefact_relationships`) and validate relationships with ERD diagrams.
-- Define conventions for artefact kinds (subject, material, reagent, container, data_product, instrument_run, etc.) and trait libraries (divisibility, storage requirements, concentration).
-- Document lineage patterns: pooling, splitting, composite assemblies, destructive vs non-destructive derivations.
+- Define conventions for artefact kinds, explicitly separating **physical material artefacts** (wells/tubes), **virtual artefacts** (manifest-derived metadata), **containers**, **data products**, and **instrument runs** so provenance edges capture both conceptual and physical movements.
+- Document lineage patterns: pooling, splitting, composite assemblies, destructive vs non-destructive derivations, and the rule that relocating material creates a new physical artefact linked back to its source.
 - Capture multiplexing patterns explicitly: support processes that collapse many inputs into pooled artefacts and later expand them again, recording the matching metadata and evidence needed to reconcile downstream outputs with the upstream contributors.
 
 ### 2. Containment & Location
-- Model containers as artefacts with associated slot/position metadata (`container_slots`) and assignment history (`artefact_container_assignments`).
+- Model containers as artefacts with associated slot/position metadata (`container_slots`). Instantiate wells as **physical artefacts** that inherit slot coordinates; measurements, QC calls, and volume adjustments live on these artefact rows instead of a join table.
 - Capture storage hierarchies (facility → unit → sublocation) and allow logical storage (filesystem/S3 paths) using the same containment interfaces.
-- Define APIs/views for “what’s in this freezer/plate” and “where is this artefact now,” ensuring history is queryable.
+- Define APIs/views for “what’s in this freezer/plate” and “where is this artefact now,” ensuring history is queryable. Extend the examples to include the DNA normalisation workflow so that well-level updates driven by instrument data products are exercised end-to-end.
 
 ### 3. RBAC & Scope Generalization
 - Introduce `scopes` (project, facility, dataset, workflow-run) with `scope_memberships` and `scope_role_inheritance`.
