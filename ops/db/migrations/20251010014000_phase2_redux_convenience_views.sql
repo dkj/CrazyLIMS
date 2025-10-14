@@ -158,11 +158,11 @@ SELECT
 FROM app_provenance.artefacts lab
 JOIN app_provenance.artefact_types lab_type
   ON lab_type.artefact_type_id = lab.artefact_type_id
-LEFT JOIN app_provenance.container_slots slot
-  ON slot.container_artefact_id = lab.artefact_id
 LEFT JOIN app_provenance.artefacts sample
-  ON sample.container_slot_id = slot.container_slot_id
- AND sample.container_artefact_id = lab.artefact_id
+  ON sample.container_artefact_id = lab.artefact_id
+LEFT JOIN app_provenance.container_slots slot
+  ON slot.container_slot_id = sample.container_slot_id
+ AND slot.container_artefact_id = lab.artefact_id
 LEFT JOIN app_provenance.v_artefact_current_location loc
   ON loc.artefact_id = lab.artefact_id
 WHERE lab_type.kind = 'container'
