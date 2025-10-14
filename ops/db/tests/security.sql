@@ -328,6 +328,15 @@ BEGIN
     FROM app_core.v_labware_contents
    WHERE barcode = 'PLATE-0007';
 
+  IF EXISTS (
+    SELECT 1
+      FROM app_core.v_labware_contents
+     WHERE barcode = 'PLATE-0007'
+       AND position_label IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Slotted plate labware unexpectedly produced null position labels';
+  END IF;
+
   IF v_positions IS NULL OR array_length(v_positions, 1) <> 2 THEN
     RAISE EXCEPTION 'Slotted plate labware sample set unexpected: %', v_positions;
   END IF;
