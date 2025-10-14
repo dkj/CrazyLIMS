@@ -9,9 +9,10 @@ interface StorageExplorerProps {
   labwareInventory: LabwareInventoryRow[];
   loading: boolean;
   error: string | null;
-  onSelectLabware?: (labwareId: string) => void;
+  onSelectLabware?: (labwareId: string | null) => void;
   selectedLabwareId?: string | null;
   onSelectSample?: (sampleId: string) => void;
+  availableSampleIds?: string[];
 }
 
 type FacilityOption = {
@@ -40,7 +41,8 @@ export function StorageExplorer({
   error,
   onSelectLabware,
   selectedLabwareId,
-  onSelectSample
+  onSelectSample,
+  availableSampleIds
 }: StorageExplorerProps) {
   const [facilityId, setFacilityId] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -138,16 +140,16 @@ export function StorageExplorer({
     );
     if (!node) return;
 
-    if (node.facility_id !== facilityId) {
-      setFacilityId(node.facility_id);
-    }
-    if (node.unit_id !== unitId) {
-      setUnitId(node.unit_id);
-    }
-    if (node.sublocation_id !== sublocationId) {
-      setSublocationId(node.sublocation_id);
-    }
-  }, [selectedLabwareId, labwareInventory, storageNodeBySublocation, facilityId, unitId, sublocationId]);
+    setFacilityId((current) =>
+      current === node.facility_id ? current : node.facility_id
+    );
+    setUnitId((current) =>
+      current === node.unit_id ? current : node.unit_id
+    );
+    setSublocationId((current) =>
+      current === node.sublocation_id ? current : node.sublocation_id
+    );
+  }, [selectedLabwareId, labwareInventory, storageNodeBySublocation]);
 
   const labwareInSublocation = useMemo(() => {
     if (!sublocationId) return [] as LabwareInventoryRow[];
@@ -165,6 +167,26 @@ export function StorageExplorer({
   const selectedLabware = selectedLabwareId
     ? labwareInventory.find((row) => row.labware_id === selectedLabwareId) ?? null
     : null;
+
+  const availableSampleIdSet = useMemo(() => {
+    if (!availableSampleIds) return null;
+    return new Set(availableSampleIds);
+  }, [availableSampleIds]);
+
+  const formatSampleBadge = (status: string | null) => {
+    if (!status) return "Sample";
+    return status
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+
+  const handleResetView = () => {
+    onSelectLabware?.(null);
+    setFacilityId(null);
+    setUnitId(null);
+    setSublocationId(null);
+  };
 
   if (loading) {
     return <div className="storage-explorer__state">Loading storage data…</div>;
@@ -197,6 +219,7 @@ export function StorageExplorer({
               setFacilityId(event.target.value);
               setUnitId(null);
               setSublocationId(null);
+              onSelectLabware?.(null);
             }}
           >
             {facilities.map((facility) => (
@@ -213,6 +236,7 @@ export function StorageExplorer({
             onChange={(event) => {
               setUnitId(event.target.value);
               setSublocationId(null);
+              onSelectLabware?.(null);
             }}
           >
             {units.map((unit) => (
@@ -226,7 +250,10 @@ export function StorageExplorer({
           Sublocation
           <select
             value={sublocationId ?? ""}
-            onChange={(event) => setSublocationId(event.target.value || null)}
+            onChange={(event) => {
+              setSublocationId(event.target.value || null);
+              onSelectLabware?.(null);
+            }}
           >
             {sublocations.map((location) => (
               <option key={location.id ?? "null"} value={location.id ?? ""}>
@@ -236,6 +263,14 @@ export function StorageExplorer({
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="storage-explorer__reset"
+          onClick={handleResetView}
+          disabled={!facilities.length}
+        >
+          Reset view
+        </button>
       </div>
 
       <div className="storage-explorer__content">
@@ -253,7 +288,10 @@ export function StorageExplorer({
               >
                 <button
                   type="button"
-                  onClick={() => setSublocationId(location.id)}
+                  onClick={() => {
+                    setSublocationId(location.id);
+                    onSelectLabware?.(null);
+                  }}
                 >
                   <span className="storage-explorer__sublocation-name">
                     {location.name}
@@ -290,7 +328,9 @@ export function StorageExplorer({
                       "storage-explorer__labware-item" +
                       (isActive ? " storage-explorer__labware-item--active" : "")
                     }
-                    onClick={() => onSelectLabware?.(labware.labware_id)}
+                    onClick={() =>
+                      onSelectLabware?.(isActive ? null : labware.labware_id)
+                    }
                   >
                     <span className="storage-explorer__labware-label">{label}</span>
                     <span className="storage-explorer__labware-meta">
@@ -314,6 +354,13 @@ export function StorageExplorer({
               <h5>
                 {selectedLabware.barcode ?? selectedLabware.display_name ?? selectedLabware.labware_id}
               </h5>
+              <button
+                type="button"
+                className="storage-explorer__clear"
+                onClick={() => onSelectLabware?.(null)}
+              >
+                Clear labware focus
+              </button>
               <dl>
                 <div>
                   <dt>Type</dt>
@@ -335,27 +382,39 @@ export function StorageExplorer({
               {selectedLabware.active_samples &&
                 selectedLabware.active_samples.length > 0 && (
                   <div>
-                    <h6>Samples</h6>
+                    <h6>Samples in this labware</h6>
                     <ul className="storage-explorer__sample-list">
-                      {selectedLabware.active_samples.map((sample) => (
-                        <li key={sample.sample_id}>
-                          <button
-                            type="button"
-                            className="storage-explorer__sample-link"
-                            onClick={() => onSelectSample?.(sample.sample_id)}
-                          >
-                            <span className="storage-explorer__sample-name">
-                              {sample.sample_name ?? sample.sample_id}
+                      {selectedLabware.active_samples.map((sample) => {
+                        const isAvailable = availableSampleIdSet?.has(sample.sample_id) ?? true;
+                        return (
+                          <li key={sample.sample_id} className="storage-explorer__sample-item">
+                            <span className="storage-explorer__sample-badge">
+                              {formatSampleBadge(sample.sample_status)}
                             </span>
-                            <span className="storage-explorer__sample-status">
-                              {sample.sample_status ?? "status unknown"}
-                            </span>
-                            <span className="storage-explorer__sample-action">
-                              Focus in provenance explorer
-                            </span>
-                          </button>
-                        </li>
-                      ))}
+                            <div className="storage-explorer__sample-body">
+                              <span className="storage-explorer__sample-name">
+                                {sample.sample_name ?? sample.sample_id}
+                              </span>
+                              <span className="storage-explorer__sample-status">
+                                Status: {sample.sample_status ?? "unknown"}
+                              </span>
+                              {isAvailable && onSelectSample ? (
+                                <button
+                                  type="button"
+                                  className="storage-explorer__sample-link"
+                                  onClick={() => onSelectSample(sample.sample_id)}
+                                >
+                                  Focus in provenance explorer
+                                </button>
+                              ) : (
+                                <span className="storage-explorer__sample-unavailable">
+                                  Not available in provenance explorer
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}

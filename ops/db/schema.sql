@@ -1,8 +1,3 @@
-\restrict o7A5eYi2IQcfoa7WxZY92lxJjGSxauwXelKIRj4AjYQA5zodZPzyq1a8DKI9i8u
-
--- Dumped from database version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
--- Dumped by pg_dump version 16.10 (Ubuntu 16.10-0ubuntu0.24.04.1)
-
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -4090,8 +4085,6 @@ CREATE POLICY scopes_read_access ON app_security.scopes FOR SELECT USING ((app_s
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict o7A5eYi2IQcfoa7WxZY92lxJjGSxauwXelKIRj4AjYQA5zodZPzyq1a8DKI9i8u
 
 
 --

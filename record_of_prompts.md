@@ -101,12 +101,24 @@ Please revise the documents accordingly.
 
 There might still be a need for "virtual" (abstract or imported information) artefacts vs "physical" (in a well, or tube) and "container" (a plate) e.g. information on samples received from elsewhere such a identifiers and characteristics (gender/reference to genotyping) would be on a virtual artefact/sample, which would be linked to a physical artefact/sample on physical sample reception by a lab. Data products would either contain the data themselves (actual data product), or if large a description of the (virtual) data product (e.g. file names and relative paths, checksums, sizes) off which might hang data product locations which help track the data product lifecycle.
 
+#### changing contents!
+
+How can we deal with the contents of some container e.g. tube or well in a plate, changing through some process? e.g. DNA fragmentation using sonication, or adding an enzyme? Another example: a tube contains blood sample, this is spun down - the nature of the contents has changed, but the container is the same, and it was  input and output to this centrifuge process though the contents input have changed type to contents output.
+
 ### work in codex environment
 
 Consider how this repo is designed for developer use either in a devcontainer (using docker outside of docker to allow docker compose to work with it), or using docker compose from outside a container.
 
 I understand codex environments, such as the one you are running in, cannot use containers/docker, so please adapt  this repo to work without containers (so perhaps enabling a postgresql, postgrest and postgraphile services ) in codex environments so that the setup/migrations and tests can be run. It should still work in that same manner as now with docker compose both inside and outside a devcontainer as well.
 
+
+### enhance ui
+
+The web ui needs a little love.
+
+The labware and storage explorer will not allow reset of focus or manual changing of the selections.
+
+Can we put the different sections in different pages/routes, maybe with a section section on the left? Also, we need to cope gracefully with a large number of records, so provide pagination over a certain number.
 
 ### Later
 
