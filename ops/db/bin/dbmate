@@ -58,6 +58,7 @@ else
 fi
 
 DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
+export DATABASE_URL
 
 if [[ ! -d ops/db/migrations ]]; then
   echo "Expected ops/db/migrations directory not found" >&2

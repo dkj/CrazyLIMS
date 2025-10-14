@@ -5,8 +5,12 @@ SHELL := /bin/bash
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
 
-POSTGREST_PORT ?= 3000
-POSTGRAPHILE_PORT ?= 3001
+POSTGREST_INTERNAL_PORT ?= 3000
+POSTGRAPHILE_INTERNAL_PORT ?= 3001
+POSTGREST_HOST_PORT ?= 6000
+POSTGRAPHILE_HOST_PORT ?= 6001
+POSTGREST_PORT ?= $(POSTGREST_HOST_PORT)
+POSTGRAPHILE_PORT ?= $(POSTGRAPHILE_HOST_PORT)
 PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
 
 ifeq ($(USE_DOCKER),yes)
@@ -20,6 +24,7 @@ DB_APP_PASSWORD ?= devpass
 PSQL_CMD ?= docker compose exec -it db psql -U dev -d lims
 DB_WAIT_CMD ?= docker compose exec -T db pg_isready -U postgres -d postgres
 PSQL_BATCH ?= docker compose exec -T db psql -U dev -d lims
+PSQL_SUPER_CMD ?= docker compose exec -T db psql -U postgres -d postgres
 LOCAL_DEV ?= no
 else
 LOCAL_DEV ?= yes
@@ -37,6 +42,7 @@ DB_NAME ?= lims
 PSQL_CMD ?= PGPASSWORD=$(DB_APP_PASSWORD) psql -h $(DB_HOST) -p $(DB_PORT) -U $(DB_APP_USER) -d $(DB_NAME)
 PSQL_BATCH ?= PGPASSWORD=$(DB_APP_PASSWORD) psql -h $(DB_HOST) -p $(DB_PORT) -U $(DB_APP_USER) -d $(DB_NAME)
 DB_WAIT_CMD ?= PGUSER=$(DB_SUPERUSER) PGPASSWORD=$(DB_SUPERPASS) pg_isready -h $(DB_HOST) -p $(DB_PORT) -d postgres
+PSQL_SUPER_CMD ?= PGUSER=$(DB_SUPERUSER) PGPASSWORD=$(DB_SUPERPASS) psql -h $(DB_HOST) -p $(DB_PORT) -d postgres
 endif
 
 DBMATE ?= ./ops/db/bin/dbmate
@@ -65,6 +71,8 @@ JWT_PUBLIC_DIR := ui/public/tokens
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
 POSTGRAPHILE_HOST := postgraphile
+POSTGREST_PORT := $(POSTGREST_INTERNAL_PORT)
+POSTGRAPHILE_PORT := $(POSTGRAPHILE_INTERNAL_PORT)
 DB_HOST_DISPLAY := db
 endif
 
@@ -97,7 +105,10 @@ db-wait:
 db/create:
 	$(DBMATE_ENV) $(DBMATE) create
 
-db/drop:
+db/terminate-connections:
+	$(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"
+
+db/drop: db/terminate-connections
 	$(DBMATE_ENV) $(DBMATE) drop
 
 db/migrate:
@@ -163,8 +174,12 @@ else
 ci:
 	$(LOCAL_DEV_HELPER) reset >/dev/null 2>&1
 	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
 	$(MAKE) db/reset
 	$(MAKE) db/test
+	$(LOCAL_DEV_HELPER) stop >/dev/null 2>&1
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
 	$(MAKE) contracts/export
 	$(MAKE) test/security
 endif
