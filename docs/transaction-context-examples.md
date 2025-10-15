@@ -7,6 +7,7 @@ These samples demonstrate how to exercise the Phase 1 Redux security backbone 
 > - Run `make up` to start the stack.
 > - Reset the database to apply the latest migrations: `make db/reset`.
 > - Generate fresh JWT fixtures: `make jwt/dev`.
+> - When Docker is driving the stack, run the shell snippets from the devcontainer (for example `docker compose exec -it dev bash`) so `postgrest:3000` resolves. The local helper (`scripts/local_dev.sh`) continues to expose PostgREST on `localhost:6000`.
 
 ## 1. Create a User via PostgREST
 
@@ -16,7 +17,7 @@ export AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
 curl -s -X POST \
   -H "$AUTH" \
   -H "Content-Type: application/json" \
-  http://localhost:6000/app_core.users \
+  http://postgrest:3000/app_core.users \
   -d '{"email":"demo-user@example.org","full_name":"Demo User","default_role":"app_researcher"}' \
   | jq .
 ```

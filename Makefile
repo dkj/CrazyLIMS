@@ -7,16 +7,14 @@ USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
 
 POSTGREST_INTERNAL_PORT ?= 3000
 POSTGRAPHILE_INTERNAL_PORT ?= 3001
-POSTGREST_HOST_PORT ?= 6000
-POSTGRAPHILE_HOST_PORT ?= 6001
-POSTGREST_PORT ?= $(POSTGREST_HOST_PORT)
-POSTGRAPHILE_PORT ?= $(POSTGRAPHILE_HOST_PORT)
 PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
 
 ifeq ($(USE_DOCKER),yes)
-POSTGREST_HOST ?= localhost
-POSTGRAPHILE_HOST ?= localhost
-DB_HOST_DISPLAY ?= localhost
+POSTGREST_HOST ?= postgrest
+POSTGRAPHILE_HOST ?= postgraphile
+POSTGREST_PORT ?= $(POSTGREST_INTERNAL_PORT)
+POSTGRAPHILE_PORT ?= $(POSTGRAPHILE_INTERNAL_PORT)
+DB_HOST_DISPLAY ?= db
 DB_PORT_DISPLAY ?= 5432
 DB_NAME ?= lims
 DB_APP_USER ?= dev
@@ -30,6 +28,8 @@ else
 LOCAL_DEV ?= yes
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
+POSTGREST_PORT ?= 6000
+POSTGRAPHILE_PORT ?= 6001
 DB_HOST ?= 127.0.0.1
 DB_PORT ?= 6432
 DB_HOST_DISPLAY ?= $(DB_HOST)
@@ -67,14 +67,6 @@ JWT_DIR := ops/examples/jwts
 JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
 RBAC_TEST_SCRIPT := scripts/test_rbac.sh
 JWT_PUBLIC_DIR := ui/public/tokens
-
-ifeq ($(PGHOST),db)
-POSTGREST_HOST := postgrest
-POSTGRAPHILE_HOST := postgraphile
-POSTGREST_PORT := $(POSTGREST_INTERNAL_PORT)
-POSTGRAPHILE_PORT := $(POSTGRAPHILE_INTERNAL_PORT)
-DB_HOST_DISPLAY := db
-endif
 
 REST_URL := http://$(POSTGREST_HOST):$(POSTGREST_PORT)/samples
 GRAPHILE_URL := http://$(POSTGRAPHILE_HOST):$(POSTGRAPHILE_PORT)/graphiql
@@ -153,11 +145,11 @@ psql:
 
 ifeq ($(USE_DOCKER),yes)
 contracts/export:
-	docker compose up -d db postgrest postgraphile
+	docker compose up -d db postgrest postgraphile dev
 	mkdir -p $(POSTGREST_CONTRACT_DIR) $(POSTGRAPHILE_CONTRACT_DIR)
-	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Accept: application/openapi+json" $(POSTGREST_BASE_URL)/ | jq . > $(POSTGREST_OPENAPI)
+	docker compose exec -T dev bash -lc "set -euo pipefail; curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H 'Accept: application/openapi+json' $(POSTGREST_BASE_URL)/" | jq . > $(POSTGREST_OPENAPI)
 	jq -n --rawfile query $(INTROSPECTION_QUERY_FILE) '{"query": $$query}' > $(INTROSPECTION_PAYLOAD)
-	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Content-Type: application/json" --data-binary @$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL) | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
+	docker compose exec -T dev bash -lc "set -euo pipefail; curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H 'Content-Type: application/json' --data-binary @/workspace/$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL)" | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
 	rm -f $(INTROSPECTION_PAYLOAD)
 	@echo "Contracts exported to $(CONTRACTS_DIR)"
 else
@@ -224,9 +216,15 @@ endif
 db/test:
 	cat ops/db/tests/security.sql | $(PSQL_BATCH)
 
+ifeq ($(USE_DOCKER),yes)
+rest:
+	@echo "GET /samples via PostgREST (executed inside dev container)";
+	docker compose exec -T dev bash -lc "curl -s $(REST_URL)" | jq .
+else
 rest:
 	@echo "GET /samples via PostgREST";
 	curl -s $(REST_URL) | jq .
+endif
 
 gql:
 	@echo "Open GraphiQL at $(GRAPHILE_URL)"

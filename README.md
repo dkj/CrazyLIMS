@@ -65,7 +65,7 @@ Additional helper commands:
 
 See `Makefile` for additional helper targets (logs, psql shell, etc.).
 
-PostgREST listens on host port **6000** and PostGraphile on **6001** by default to avoid conflicts in Codespaces and other devcontainer hosts. Override the published ports by setting `POSTGREST_HOST_PORT` / `POSTGRAPHILE_HOST_PORT` before running Docker Compose or `make` (e.g. `POSTGREST_HOST_PORT=7000 make up`).
+When running under Docker/Devcontainer, PostgREST and PostGraphile stay on the internal network (`http://postgrest:3000`, `http://postgraphile:3001/graphql`). Use the devcontainer shell (the `dev` service) for direct API access. Only the Vite web console is published on host port **5173**. The local helper (`scripts/local_dev.sh`) still binds PostgREST/PostGraphile to `localhost:6000/6001` when Docker is unavailable.
 
 ## Migration Workflow
 
@@ -107,10 +107,10 @@ Development JWTs live under `ops/examples/jwts`:
 
 - `admin.jwt`, `operator.jwt`, `researcher.jwt` map to the seeded personas.
 - `make jwt/dev` regenerates tokens using the local secret (defined in `docker-compose.yml`) and copies them into `ui/public/tokens`.
-- Example usage:
+- Example usage (from inside the devcontainer shell or local helper environment):
   ```bash
   AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
-  curl -H "$AUTH" http://localhost:6000/users
+  curl -H "$AUTH" http://postgrest:3000/users
   ```
 
 The React UI still targets the legacy sample inventory endpoints and is parked until Phase 2 rebuilds those shapes on top of the new transaction/audit substrate.

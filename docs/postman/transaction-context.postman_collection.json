@@ -78,7 +78,8 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:6000"
+      "value": "http://postgrest:3000",
+      "description": "Internal Docker hostname; switch to http://localhost:6000 when using scripts/local_dev.sh."
     },
     {
       "key": "adminJwt",
