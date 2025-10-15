@@ -107,13 +107,13 @@ db/create:
 
 db/terminate-connections:
 ifeq ($(USE_DOCKER),yes)
-        @if docker compose ps -q db >/dev/null; then \
-                $(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"; \
-        else \
-                echo "db container not running; skipping terminate-connections"; \
-        fi
+	@if [ -n "$(shell docker compose ps -q db 2>/dev/null)" ]; then \
+		$(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"; \
+	else \
+		echo "db container not running; skipping terminate-connections"; \
+	fi
 else
-        $(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"
+	$(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"
 endif
 
 db/drop: db/terminate-connections
