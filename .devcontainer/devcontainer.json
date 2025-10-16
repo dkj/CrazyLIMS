@@ -11,7 +11,7 @@
     "COMPOSE_PROJECT_NAME": "crazylims",
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
   },
-  "forwardPorts": [5432, 3000, 3001],
+  "forwardPorts": [5432, 6000, 6001, 5173],
   "customizations": {
     "vscode": {
       "extensions": [
