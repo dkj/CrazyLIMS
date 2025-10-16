@@ -11,7 +11,7 @@ interface SampleProvenanceExplorerProps {
   labwareInventory: LabwareInventoryRow[];
   loading: boolean;
   error: string | null;
-  onSelectLabware?: (labwareId: string) => void;
+  onSelectLabware?: (labwareId: string | null) => void;
   selectedLabwareId?: string | null;
   focusedSampleId?: string | null;
   onSampleFocusChange?: (sampleId: string) => void;
@@ -219,8 +219,8 @@ export function SampleProvenanceExplorer({
   }, [lineage, selectedSampleId]);
 
   const handleSelectLabware = (labwareId: string | null) => {
-    if (!labwareId || !onSelectLabware) return;
-    onSelectLabware(labwareId);
+    if (!onSelectLabware) return;
+    onSelectLabware(labwareId ?? null);
   };
 
   const handleFocusSample = (sampleId: string) => {
