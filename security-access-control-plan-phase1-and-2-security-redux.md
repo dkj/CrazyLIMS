@@ -59,323 +59,120 @@ These stories are covered by the tests in §11.
 
 ---
 
-## 3) Data Model Extensions (DDL)
+## 3) Data Model Touchpoints (Reuse First)
 
-> Schema names are illustrative (`app_security`, `app_provenance`, `app_ops`). Adapt to repository conventions if different.
+Phase 2 Redux already delivered the tables we need. Security Redux focuses on **selective augmentation** rather than introducing parallel schemas.
 
-### 3.1 Scopes & Memberships
-```sql
-create table if not exists app_security.scopes (
-  scope_id        uuid primary key default gen_random_uuid(),
-  scope_type      text not null check (scope_type in ('project','ops','instrument','subproject','pool')),
-  name            text not null unique,
-  parent_scope_id uuid references app_security.scopes(scope_id) on delete cascade,
-  created_at      timestamptz not null default now()
-);
+### 3.1 Scope Fabric (no structural change)
+- Continue using `app_security.scopes`, `scope_memberships`, and `scope_role_inheritance`, along with helper functions such as `actor_scope_roles`, `actor_has_scope`, and `current_actor_id`.  
+- Standardise naming only: projects keep `project:*`; ops runs and automation scopes become child scopes (e.g. `ops:normalisation:2024-07-15`) seeded through existing upsert jobs.  
+- Service accounts and instruments remain regular `scope_memberships` rows. Any additional persona roles are inserted via seed data, not DDL.
 
-create table if not exists app_security.scope_memberships (
-  user_id         uuid not null references app_core.users(user_id),
-  scope_id        uuid not null references app_security.scopes(scope_id),
-  role            text not null check (role in ('researcher','lab_tech','instrument','viewer','admin')),
-  primary key (user_id, scope_id)
-);
+### 3.2 Artefact & Lineage Representation
+- `app_provenance.artefact_scopes` remains the canonical mapping between artefacts and scopes. Ops duplicates and returned deliverables gain extra rows here; transfer state is captured in `artefact_traits` (new trait key `transfer_state`) so we retain history without altering the base table.  
+- Duplication links are expressed with `app_provenance.artefact_relationships` by introducing a new `relationship_type = 'handover_duplicate'`. Relationship metadata holds the propagated field whitelist and timestamps, keeping everything in one provenance graph.  
+- Existing recursive views (`app_core.v_sample_lineage`, `app_provenance.v_lineage_summary`) just need minor filters to surface downstream ops artefacts; no new tables. Add a covering index on `(relationship_type, parent_artefact_id)` if performance testing proves it useful.
 
-create index if not exists idx_scope_memberships_user on app_security.scope_memberships(user_id);
-create index if not exists idx_scope_memberships_scope on app_security.scope_memberships(scope_id);
-```
+### 3.3 Pools, Multiplexing & Data Products
+- Pools, normalisation runs, and demultiplexed outputs continue to live in `app_provenance.process_instances` with `process_io.direction IN ('pooled_input','pooled_output')` and `multiplex_group` populated. Where needed we add seed data for new `process_type` definitions—no schema change.  
+- Data products remain artefacts (`artefact_types.kind = 'data_product'`). Attribution to contributing research scopes is handled via additional `artefact_scopes` rows or lightweight reference artefacts typed `data_product_reference`. This reuses existing RLS on artefacts and scopes.  
+- Optional enhancements: add a partial index on `process_io(process_instance_id, direction)` for pooled workloads, and create a view (`app_provenance.v_data_product_attribution`) joining artefact scopes to process IO for fast per-project slices.
 
-### 3.2 Artefacts, Processes, Data Products
-```sql
--- Artefacts (virtual & physical)
-alter table app_provenance.artefacts
-  add column if not exists scope_id uuid not null references app_security.scopes(scope_id);
-
-alter table app_provenance.artefacts
-  add column if not exists is_virtual boolean not null default false;
-
-alter table app_provenance.artefacts
-  add column if not exists transfer_state text
-    check (transfer_state in ('none','transferred','returned')) default 'none';
-
--- Explicit duplication map
-create table if not exists app_provenance.artefact_duplicates (
-  duplicate_id     uuid primary key default gen_random_uuid(),
-  src_artefact_id  uuid not null references app_provenance.artefacts(artefact_id) on delete restrict,
-  dst_artefact_id  uuid not null references app_provenance.artefacts(artefact_id) on delete cascade,
-  propagated_fields jsonb not null default '{}'::jsonb,
-  created_at       timestamptz not null default now(),
-  unique (src_artefact_id, dst_artefact_id)
-);
-
--- Lineage (DAG edges)
-create table if not exists app_provenance.lineage (
-  parent_artefact_id uuid not null references app_provenance.artefacts(artefact_id),
-  child_artefact_id  uuid not null references app_provenance.artefacts(artefact_id),
-  process_id         uuid references app_provenance.processes(process_id),
-  primary key (parent_artefact_id, child_artefact_id)
-);
-
-create index if not exists idx_lineage_parent on app_provenance.lineage(parent_artefact_id);
-create index if not exists idx_lineage_child  on app_provenance.lineage(child_artefact_id);
-
--- Pools & members
-create table if not exists app_ops.pools (
-  pool_id        uuid primary key default gen_random_uuid(),
-  scope_id       uuid not null references app_security.scopes(scope_id),
-  name           text not null
-);
-
-create table if not exists app_ops.pool_members (
-  pool_id        uuid not null references app_ops.pools(pool_id) on delete cascade,
-  artefact_id    uuid not null references app_provenance.artefacts(artefact_id) on delete cascade,
-  contribution_fraction numeric not null check (contribution_fraction > 0 and contribution_fraction <= 1),
-  primary key (pool_id, artefact_id)
-);
-
--- Data products & attribution
-create table if not exists app_ops.data_products (
-  data_product_id uuid primary key default gen_random_uuid(),
-  pool_id         uuid not null references app_ops.pools(pool_id),
-  scope_id        uuid not null references app_security.scopes(scope_id), -- ops scope of creation
-  manifest        jsonb not null,
-  created_at      timestamptz not null default now()
-);
-
-create table if not exists app_ops.data_product_attribution (
-  data_product_id   uuid not null references app_ops.data_products(data_product_id) on delete cascade,
-  source_artefact_id uuid not null references app_provenance.artefacts(artefact_id) on delete cascade,
-  source_scope_id    uuid not null references app_security.scopes(scope_id),
-  readset_uri        text,
-  primary key (data_product_id, source_artefact_id)
-);
-
-create index if not exists idx_dpa_scope on app_ops.data_product_attribution(source_scope_id);
-create index if not exists idx_art_scope on app_provenance.artefacts(scope_id);
-```
-
-### 3.3 Correction Propagation Rules
-```sql
-create table if not exists app_provenance.propagation_rules (
-  rule_id         uuid primary key default gen_random_uuid(),
-  src_table       text not null check (src_table in ('artefacts')),
-  src_field       text not null,
-  dst_table       text not null check (dst_table in ('artefacts')),
-  dst_field       text not null,
-  is_allowed      boolean not null default true,
-  last_changed_at timestamptz not null default now(),
-  unique (src_table, src_field, dst_table, dst_field)
-);
-```
+### 3.4 Correction Propagation
+- Propagation rules ride on the `handover_duplicate` relationship metadata (`metadata -> 'propagation_whitelist'`). That avoids a separate table while still supporting per-field control.  
+- A helper function (see §6) reads the whitelist and reapplies updated values by writing to traits or metadata on the duplicate artefact. Because the whitelist is stored in metadata, ops teams can adjust whitelisted fields via regular updates without a migration.
 
 ---
 
-## 4) Authorization Model (Functions, Context, RLS)
+## 4) Authorization Model (Reuse + Targeted Deltas)
 
 ### 4.1 Session Context
-- On connection/JWT:
-  - `app.current_user_id()` returns current user id.
-  - `app.current_scope_roles` exposed via a view to map `{scope_id, role}` for the user.
+- Lean on the existing transaction-context plumbing (`app_security.start_transaction_context`, `finish_transaction_context`) to stamp `app.actor_id`, `app.roles`, and JWT claims.  
+- Ensure migrations and fixtures keep the seed users/scopes used by `ops/db/tests/security.sql` so tests can continue to `SET ROLE app_researcher` et al without additional scaffolding.  
+- No new GUCs are required; instead we document the expectation that UI/API layers set `app.impersonated_roles` when acting on behalf of another user.
 
-### 4.2 Helper Functions (set `search_path` safely; mark as `stable`; use `SECURITY DEFINER` if needed)
-```sql
-create or replace function app_security.current_user_id()
-returns uuid language sql stable as $$
-  select current_setting('app.current_user_id', true)::uuid
-$$;
+### 4.2 Helper Functions
+- Extend the shipped `app_provenance.can_access_artefact` function so that, in addition to direct scope membership, it grants read access if the user holds membership in any ancestor artefact via `artefact_relationships` (e.g. follows `handover_duplicate`, `derived_from`, or `pooled_from` edges up the provenance graph). This keeps the lineage-aware visibility requirement self-contained.  
+- Reuse `app_provenance.can_access_process` and `app_security.actor_has_scope` unchanged; they already honour scope inheritance.  
+- Add a tiny wrapper `app_provenance.can_update_handover_metadata(artefact_id)` that checks both scope write privileges and that the artefact still sits in an ops scope (prevents research users from mutating ops-only traits). This is a thin SQL function referencing existing helpers.
 
-create or replace function app_security.has_scope_membership(p_scope_id uuid, p_roles text[] default null)
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from app_security.scope_memberships m
-    where m.scope_id = p_scope_id
-      and m.user_id = app_security.current_user_id()
-      and (p_roles is null or m.role = any(p_roles))
-  );
-$$;
-
-create or replace function app_provenance.can_read_artefact(p_artefact_id uuid)
-returns boolean language plpgsql stable as $$
-declare v_scope uuid;
-begin
-  select scope_id into v_scope from app_provenance.artefacts where artefact_id = p_artefact_id;
-  if v_scope is null then return false; end if;
-
-  if app_security.has_scope_membership(v_scope, array['researcher','lab_tech','viewer','admin']) then
-    return true;
-  end if;
-
-  -- lineage-based visibility: user may read if any ancestor is in a scope the user belongs to
-  return exists (
-    with recursive anc(artefact_id) as (
-      select p_artefact_id
-      union all
-      select l.parent_artefact_id
-      from app_provenance.lineage l
-      join anc on anc.artefact_id = l.child_artefact_id
-    )
-    select 1
-    from anc
-    join app_provenance.artefacts a on a.artefact_id = anc.artefact_id
-    join app_security.scope_memberships m on m.scope_id = a.scope_id
-    where m.user_id = app_security.current_user_id()
-  );
-end;
-$$;
-
-create or replace function app_provenance.can_write_artefact(p_artefact_id uuid)
-returns boolean language sql stable as $$
-  select app_security.has_scope_membership(a.scope_id, array['researcher','lab_tech','admin'])
-  from app_provenance.artefacts a
-  where a.artefact_id = p_artefact_id;
-$$;
-
-create or replace function app_ops.can_read_data_product(p_dp_id uuid)
-returns boolean language sql stable as $$
-  select exists (
-    select 1
-    from app_ops.data_product_attribution dpa
-    join app_security.scope_memberships m
-      on m.scope_id = dpa.source_scope_id
-     and m.user_id = app_security.current_user_id()
-    where dpa.data_product_id = p_dp_id
-  );
-$$;
-```
-
-### 4.3 RLS Policies (deny-all default; enable RLS everywhere)
-
-#### Artefacts
-```sql
-alter table app_provenance.artefacts enable row level security;
-
-create policy artefacts_select on app_provenance.artefacts
-for select using (app_provenance.can_read_artefact(artefact_id));
-
-create policy artefacts_insert on app_provenance.artefacts
-for insert with check (
-  app_security.has_scope_membership(scope_id, array['researcher','lab_tech','instrument','admin'])
-  and (not is_virtual or app_security.has_scope_membership(scope_id, array['researcher','admin']))
-);
-
-create policy artefacts_update on app_provenance.artefacts
-for update using (app_provenance.can_write_artefact(artefact_id))
-with check (app_provenance.can_write_artefact(artefact_id));
-```
-
-> **Column-level guards:** Add a `BEFORE UPDATE` trigger to restrict which columns each role may change (e.g., researchers on virtual fields in research scopes; lab_tech on physical/QC fields in ops scopes; instrument on status/QC only).
-
-#### Lineage
-```sql
-alter table app_provenance.lineage enable row level security;
-
-create policy lineage_select on app_provenance.lineage
-for select using (
-  app_provenance.can_read_artefact(parent_artefact_id)
-  or app_provenance.can_read_artefact(child_artefact_id)
-);
-
-create policy lineage_insert on app_provenance.lineage
-for insert with check (app_provenance.can_write_artefact(child_artefact_id));
-```
-
-#### Pools & Data Products
-```sql
-alter table app_ops.pools enable row level security;
-
-create policy pools_select on app_ops.pools
-for select using (app_security.has_scope_membership(scope_id, array['lab_tech','admin','instrument','researcher']));
-
-create policy pools_write on app_ops.pools
-for all using (app_security.has_scope_membership(scope_id, array['lab_tech','admin','instrument']))
-with check (app_security.has_scope_membership(scope_id, array['lab_tech','admin','instrument']));
-
-alter table app_ops.data_products enable row level security;
-
-create policy dp_select on app_ops.data_products
-for select using (app_ops.can_read_data_product(data_product_id));
-
-alter table app_ops.data_product_attribution enable row level security;
-
-create policy dpa_select on app_ops.data_product_attribution
-for select using (
-  exists (
-    select 1 from app_security.scope_memberships m
-    where m.scope_id = app_ops.data_product_attribution.source_scope_id
-      and m.user_id = app_security.current_user_id()
-  )
-);
-```
-
-#### Duplications
-```sql
-alter table app_provenance.artefact_duplicates enable row level security;
-
-create policy ad_select on app_provenance.artefact_duplicates
-for select using (
-  app_provenance.can_read_artefact(src_artefact_id)
-  or app_provenance.can_read_artefact(dst_artefact_id)
-);
-```
+### 4.3 Policy Adjustments
+- Artefact policies remain defined on `app_provenance.artefacts`; once `can_access_artefact` understands lineage, downstream visibility (including returned data-product references) works automatically. Column-guard triggers stay focused on trait-level updates; we only extend their allowlists to include ops-specific QC fields and the new `transfer_state` trait.  
+- `app_provenance.artefact_relationships` already enforces access through `can_access_artefact`. We add regression tests ensuring `handover_duplicate` links are readable when either side is visible.  
+- `app_provenance.process_instances` and `process_io` policies continue to call `can_access_process`. Additional acceptance tests cover pooled workloads so we do not relax those policies by mistake.  
+- No standalone `app_ops` tables exist; data products share the artefact policies. Ensuring they receive correct `artefact_scopes` rows is sufficient for RLS.  
+- Audit triggers remain untouched; they continue to capture mutations for artefacts, traits, relationships, and processes.
 
 ---
 
 ## 5) Handover Protocol (Research ⇄ Ops)
 
 ### 5.1 To Ops (Research → Ops)
-1. **Select** research artefacts to transfer (plate/wells/tags).
-2. **Create** ops scope if needed (e.g., `ops/<pipeline>/<run>`).
-3. **Duplicate** minimal fields into new `artefacts(scope_id := ops_scope)`:
-   - plate/well positions, library IDs, index tags, expected fragment size, QC breadcrumbs.
-   - **Exclude** upstream research metadata (donor PHI, etc.).
-4. **Record** `artefact_duplicates(src, dst, propagated_fields := whitelist)`.
-5. **Mark** source `transfer_state := 'transferred'`.
-6. **Create** lineage edges `lineage(src → dst)`.
+1. **Select** research artefacts to transfer (plates, wells, library tubes).  
+2. **Ensure** an ops child scope exists beneath the originating project (`scope_memberships` grants for ops staff + instruments).  
+3. **Insert** new artefacts in the ops scope using the existing artefact type definitions. Populate only the minimal metadata needed by ops (indexes, expected fragment sizes, QC placeholders).  
+4. **Record** provenance by inserting an `artefact_relationships` row with `relationship_type = 'handover_duplicate'` from research artefact → ops artefact. Store the propagated-field whitelist in `metadata -> 'propagation_whitelist'`.  
+5. **Update** the source artefact’s `transfer_state` trait (via `artefact_trait_values`) to `'transferred'`.  
+6. **Log** the handover process via `process_instances`/`process_io` so we can audit who performed the transfer and what was duplicated.
 
 ### 5.2 Within Ops
-- Ops users & instruments work only on ops-scope artefacts.
-- Pools and data products created within ops scope.
-- Attribution table `data_product_attribution` populated for **each contributing source artefact** (via lineage up to research artefacts).
+- Ops users and instruments work exclusively on artefacts scoped to the ops child scope. They create further artefacts and process instances as normal; RLS already isolates them.  
+- Pools and data products are recorded as standard artefacts emitted by ops processes. `process_io` entries capture pooled inputs/outputs with `multiplex_group` identifiers.  
+- Each data-product artefact receives `artefact_scopes` rows for every contributing research scope (derived from lineage back through `handover_duplicate` edges), enabling downstream researchers to see only their fraction.
 
 ### 5.3 Return to Research (Ops → Research)
-1. For each data product, **fan-out references** (or duplicates) into each contributing research scope:
-   - Create research-scope **product references** per contributor (optionally as lightweight rows pointing to canonical ops product).
-   - Link via `data_product_attribution` to preserve provenance and enforce per-scope visibility.
-2. Set ops artefacts `transfer_state := 'returned'` when complete.
-3. Maintain lineage edges `ops data_product → research data_product_ref` or store explicit mapping.
+1. For each data-product artefact, **fan out** lightweight reference artefacts (type `data_product_reference`) in the relevant research scopes, or simply add additional `artefact_scopes` rows if the canonical artefact can remain shared.  
+2. Create reciprocal `artefact_relationships` (`relationship_type = 'returned_output'`) from the ops artefact to each research reference to preserve provenance.  
+3. Update the ops artefact’s `transfer_state` trait to `'returned'` once confirmation arrives, and ensure the original research artefact receives lineage edges to any downstream physical artefacts produced from the returned data.
 
 ---
 
 ## 6) Correction Propagation
 
 ### Policy
-- Upstream corrections (e.g., fixing i7 index) may be **propagated** from research artefact → ops duplicate **if**:
-  - field is whitelisted in `propagation_rules`,
-  - destination field exists and is safe to update,
-  - ops artefact not yet consumed by a closed process state (optional rule).
+- Upstream corrections (e.g. amending an index tag) propagate from a research artefact to its ops duplicate only when the corresponding `handover_duplicate` relationship lists the field in `metadata -> 'propagation_whitelist'`.  
+- Propagation is blocked beyond ops once the duplicate’s `transfer_state` trait is `'returned'` or the associated process instance is marked `completed`.
 
 ### Mechanism
 ```sql
-create or replace function app_provenance.propagate_corrections(p_src_artefact_id uuid)
-returns void language plpgsql security definer as $$
-declare r record;
+-- Skeleton – updates existing function rather than introducing a new table.
+create or replace function app_provenance.propagate_handover_corrections(p_src_artefact_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to pg_catalog, public, app_provenance, app_security
+as $$
+declare
+  rel record;
+  whitelist text[];
 begin
-  for r in
-    select d.dst_artefact_id, d.propagated_fields
-    from app_provenance.artefact_duplicates d
-    where d.src_artefact_id = p_src_artefact_id
+  for rel in
+    select
+      ar.child_artefact_id  as dst_artefact_id,
+      coalesce((ar.metadata -> 'propagation_whitelist')::text[], '{}') as allowed_fields
+    from app_provenance.artefact_relationships ar
+    where ar.parent_artefact_id = p_src_artefact_id
+      and ar.relationship_type = 'handover_duplicate'
   loop
-    -- apply per-field propagation as per rules (pseudo-code):
-    -- for each allowed (src_field -> dst_field) in propagation_rules:
-    --   update dst artefact set dst_field = src_value
-    --   record in propagated_fields audit json
-    null; -- implement per-repo column set
+    whitelist := rel.allowed_fields;
+    if array_length(whitelist, 1) is null then
+      continue;
+    end if;
+
+    -- domain-specific projection: update traits/metadata on the duplicate.
+    perform app_provenance.apply_whitelisted_updates(
+      p_src_artefact_id    => p_src_artefact_id,
+      p_dst_artefact_id    => rel.dst_artefact_id,
+      p_fields             => whitelist
+    );
   end loop;
 end;
 $$;
-
--- Trigger: on RESEARCH artefacts AFTER UPDATE
--- invokes propagate_corrections() only for whitelisted fields.
 ```
+
+> `app_provenance.apply_whitelisted_updates` is a small internal helper that reads the requested fields from the source artefact’s metadata/traits and writes them to the destination artefact, recording audit metadata on the relationship. We keep it flexible so each repo can decide which columns/traits participate.
+
+- A trigger on research artefacts (`AFTER UPDATE`) calls `propagate_handover_corrections` when any field listed in a whitelist changes. The trigger inspects `TG_ARGV` to limit the scope (e.g. only certain metadata keys).
 
 ---
 
@@ -393,30 +190,25 @@ $$;
 ## 8) Auditing & Observability
 
 ### Audit
-- **Unified audit trigger** on all mutating tables capturing:
-  - `actor_user_id`, effective `role`, `scope_id`,
-  - `operation`, `old/new` diffs,
-  - nearest **lineage research scope**,
-  - correlation/run ids.
-- Store in `app_audit.events` with GIN on jsonb for search.
+- Keep the existing `app_security.audit_log` + `app_security.record_audit()` trigger stack that already covers artefacts, traits, processes, and relationships.  
+- Extend the trigger arguments where necessary so audit rows carry `metadata -> 'scope_key'`, `metadata -> 'relationship_type'`, and any propagated-field updates performed by `apply_whitelisted_updates`.  
+- Add a convenience view `app_security.v_audit_transfer_events` joining audit rows to `artefact_relationships` for quick inspection of handovers and returns.
 
 ### Views for Explainability
-- `vw_user_visible_artefacts` — materialized/normal view after RLS to ease UI queries.
-- `vw_lineage_paths(artefact_id)` — recursive CTE producing ancestor/descendant chains.
-- `vw_data_product_slice(user_id)` — shows only attributed products for user’s scopes.
+- `app_provenance.v_lineage_summary` gains columns highlighting whether an artefact is ops-scoped, returned, or pending return (driven from traits + relationship metadata).  
+- A new view `app_provenance.v_data_products_per_scope` (likely materialised in production) joins artefact scopes, process IO, and handover metadata to surface exactly which deliverables a user may see.  
+- Existing front-end views (`v_sample_overview`, `v_labware_contents`, etc.) should be regression-tested; any scope filters they contain stay unchanged because visibility continues to flow through `can_access_artefact`.
 
 ---
 
 ## 9) Migration & Rollout Plan
 
-1. **Phase A — Schema:** Create scopes, memberships, lineage, duplication, pools, attribution, propagation tables & functions.
-2. **Phase B — RLS:** Enable RLS & apply policies; remove direct table grants; ensure roles have EXECUTE on helper functions.
-3. **Phase C — Handover Procedures:** Implement stored procedures:
-   - `app_ops.sp_transfer_to_ops(research_scope_id, artefact_ids[], ops_scope_name, whitelist jsonb)`
-   - `app_ops.sp_return_to_research(pool_or_dp_id)`
-4. **Phase D — Propagation:** Implement rules & triggers for correction flows.
-5. **Phase E — Backfill:** Assign scopes to existing artefacts; build lineage; populate memberships.
-6. **Phase F — Cutover:** Flip API/UI to rely solely on DB policies; lock legacy paths.
+1. **Phase A — Metadata & Seeds:** Add the `handover_duplicate` and `returned_output` relationship types, seed the `transfer_state` trait definition, and create any optional indexes identified in §3.  
+2. **Phase B — Helper Enhancements:** Extend `can_access_artefact`, add the lightweight `can_update_handover_metadata` wrapper, and document the lineage recursion contract.  
+3. **Phase C — Stored Procedures:** Implement the `app_provenance.sp_handover_to_ops` and `app_provenance.sp_return_from_ops` helpers plus supporting utilities (`project_handover_metadata`, `set_transfer_state`, `apply_whitelisted_updates`).  
+4. **Phase D — Propagation:** Wire the AFTER UPDATE trigger that calls `propagate_handover_corrections` and backfill whitelist metadata on existing handover relationships.  
+5. **Phase E — Backfill:** Assign ops scopes to existing duplicates, populate relationship metadata, and ensure pooled data products carry the new scope tags.  
+6. **Phase F — Cutover:** Flip API/UI to rely solely on the DB policies/tests and retire any legacy access paths.
 
 ---
 
@@ -424,68 +216,147 @@ $$;
 
 ### 10.1 Transfer to Ops
 ```sql
-create or replace function app_ops.sp_transfer_to_ops(
-  p_research_scope uuid,
+create or replace function app_provenance.sp_handover_to_ops(
+  p_research_scope_id uuid,
+  p_ops_scope_key text,
   p_artefact_ids uuid[],
-  p_ops_scope_name text,
-  p_whitelist jsonb  -- {"fields":["plate","well","i5","i7","expected_fragment_bp"]}
+  p_field_whitelist text[] DEFAULT '{}'
 ) returns uuid
-language plpgsql security definer as $$
-declare v_ops_scope uuid; v_src uuid; v_dst uuid;
+language plpgsql
+security definer
+set search_path to pg_catalog, public, app_provenance, app_security, app_core
+as $$
+declare
+  v_ops_scope_id uuid;
+  v_src uuid;
+  v_dst uuid;
+  v_metadata jsonb := jsonb_build_object('propagation_whitelist', p_field_whitelist);
 begin
-  -- ensure or create ops scope
-  select scope_id into v_ops_scope from app_security.scopes where name = p_ops_scope_name for update skip locked;
-  if v_ops_scope is null then
-    insert into app_security.scopes(scope_type,name,parent_scope_id)
-    values ('ops', p_ops_scope_name, p_research_scope)
-    returning scope_id into v_ops_scope;
+  select scope_id
+    into v_ops_scope_id
+    from app_security.scopes
+   where scope_key = p_ops_scope_key
+   for update;
+
+  if v_ops_scope_id is null then
+    insert into app_security.scopes(scope_key, scope_type, display_name, parent_scope_id, metadata)
+    values (
+      p_ops_scope_key,
+      'ops',
+      replace(p_ops_scope_key, ':', ' / '),
+      p_research_scope_id,
+      jsonb_build_object('seed', 'handover')
+    )
+    returning scope_id into v_ops_scope_id;
   end if;
 
   foreach v_src in array p_artefact_ids loop
-    if not app_provenance.can_read_artefact(v_src) then
+    if not app_provenance.can_access_artefact(v_src) then
       raise exception 'not authorized to transfer artefact %', v_src;
     end if;
 
-    -- duplicate with minimal fields (projection from whitelist to columns is repo-specific)
-    insert into app_provenance.artefacts(scope_id, is_virtual /*, whitelisted columns ... */)
-    values (v_ops_scope, false /*, ... */)
+    insert into app_provenance.artefacts (
+      artefact_type_id,
+      name,
+      metadata,
+      container_artefact_id,
+      container_slot_id,
+      origin_process_instance_id,
+      is_virtual
+    )
+    select
+      a.artefact_type_id,
+      a.name,
+      app_provenance.project_handover_metadata(a.metadata, p_field_whitelist),
+      a.container_artefact_id,
+      a.container_slot_id,
+      a.origin_process_instance_id,
+      false
+    from app_provenance.artefacts a
+    where a.artefact_id = v_src
     returning artefact_id into v_dst;
 
-    insert into app_provenance.artefact_duplicates(src_artefact_id, dst_artefact_id, propagated_fields)
-    values (v_src, v_dst, p_whitelist);
+    insert into app_provenance.artefact_scopes(artefact_id, scope_id, relationship)
+    values (v_dst, v_ops_scope_id, 'primary');
 
-    update app_provenance.artefacts set transfer_state='transferred' where artefact_id = v_src;
-    insert into app_provenance.lineage(parent_artefact_id, child_artefact_id) values (v_src, v_dst);
+    insert into app_provenance.artefact_relationships(
+      parent_artefact_id,
+      child_artefact_id,
+      relationship_type,
+      metadata
+    )
+    values (
+      v_src,
+      v_dst,
+      'handover_duplicate',
+      v_metadata
+    );
+
+    perform app_provenance.set_transfer_state(v_src, 'transferred');
   end loop;
 
-  return v_ops_scope;
+  return v_ops_scope_id;
 end;
 $$;
 ```
 
 ### 10.2 Return to Research
 ```sql
-create or replace function app_ops.sp_return_to_research(p_dp_id uuid)
-returns void language plpgsql security definer as $$
-declare r record; v_ref uuid;
+create or replace function app_provenance.sp_return_from_ops(
+  p_ops_artifact_id uuid,
+  p_research_scope_ids uuid[]
+) returns void
+language plpgsql
+security definer
+set search_path to pg_catalog, public, app_provenance, app_security, app_core
+as $$
+declare
+  v_scope uuid;
+  v_ref uuid;
 begin
-  for r in
-    select dpa.data_product_id, dpa.source_scope_id
-    from app_ops.data_product_attribution dpa
-    where dpa.data_product_id = p_dp_id
-  loop
-    -- per-scope references/duplicates
-    insert into app_ops.data_products(scope_id, manifest)
-    select r.source_scope_id, dp.manifest
-    from app_ops.data_products dp
-    where dp.data_product_id = r.data_product_id
-    returning data_product_id into v_ref;
+  foreach v_scope in array p_research_scope_ids loop
+    -- Either attach the canonical artefact to the research scope...
+    insert into app_provenance.artefact_scopes (artefact_id, scope_id, relationship)
+    values (p_ops_artifact_id, v_scope, 'derived_from')
+    on conflict (artefact_id, scope_id) do nothing;
 
-    -- optionally: record mapping dp -> ref, and lineage link
+    -- ...and/or create a lightweight reference artefact per scope.
+    insert into app_provenance.artefacts (artefact_type_id, name, metadata, is_virtual)
+    select
+      ref_type.artefact_type_id,
+      a.name || ' (returned)',
+      jsonb_build_object('source_ops_artifact', p_ops_artifact_id),
+      true
+    from app_provenance.artefacts a
+    join app_provenance.artefact_types ref_type
+      on ref_type.type_key = 'data_product_reference'
+    where a.artefact_id = p_ops_artifact_id
+    returning artefact_id into v_ref;
+
+    insert into app_provenance.artefact_scopes (artefact_id, scope_id, relationship)
+    values (v_ref, v_scope, 'primary');
+
+    insert into app_provenance.artefact_relationships (
+      parent_artefact_id,
+      child_artefact_id,
+      relationship_type
+    ) values (
+      p_ops_artifact_id,
+      v_ref,
+      'returned_output'
+    );
   end loop;
+
+  perform app_provenance.set_transfer_state(p_ops_artifact_id, 'returned');
 end;
 $$;
 ```
+
+### 10.3 Prototype Walkthrough
+1. Use `db.session.sql` (or an ad-hoc psql script) to call `app_provenance.sp_handover_to_ops` for a seeded research artefact; capture the returned ops scope id.  
+2. Run existing ops processes (normalisation + sequencing) by inserting `process_instances`/`process_io` rows, ensuring pooled outputs carry both ops and research scope tags.  
+3. Trigger `app_provenance.sp_return_from_ops`, then query `app_provenance.v_lineage_summary` to confirm the returned references and scope visibility were created.  
+4. Verify RLS expectations by running the corresponding `SET ROLE` blocks from `ops/db/tests/security.sql`, mirroring the automated tests before codifying them.
 
 ---
 
@@ -493,16 +364,23 @@ $$;
 
 - **T1 (Alpha-1,2):** Researcher in Alpha sees Alpha artefacts; cannot see Beta rows (RLS filters).  
 - **T2 (Alpha-4):** Research lab_tech cannot read virtual entities if role disallowed; can edit physical fields only (trigger enforces).  
-- **T3 (Alpha-5):** Transfer to ops creates duplicates with minimal fields; research source marked `transferred`; lineage recorded.  
-- **T4 (Ops-1):** Ops lab tech sees only ops duplicates; cannot see donor PHI (no such fields in ops duplicates; RLS denies research scope).  
-- **T5 (Ops-2,3):** Normalization & pooling in ops succeeds; pool membership recorded with fractions.  
-- **T6 (Ops-4 + Vis-2):** Data product visibility — Alpha researcher sees only products attributed to Alpha contributions in mixed pool; Beta sees none if not contributor.  
-- **T7 (Ops-5):** Return handover creates research-scope product refs; Alpha can see them; ops cannot see research refs.  
-- **T8:** Correction propagation (whitelisted field) updates ops duplicate; non-whitelisted field does not propagate.  
-- **T9 (Vis-4):** Instrument account can read inputs and write outputs/QC only within its ops scope.  
-- **T10:** Audit rows present for each mutation with correct actor/scope/lineage.  
-- **T11:** Attempted cross-scope query returns zero rows due to RLS (negative test).  
-- **T12:** Column-level guard rejects unauthorized field edits (trigger error).  
+- **T3 (Alpha-5):** Transfer to ops produces `handover_duplicate` relationships, creates ops-scope artefacts with minimal metadata, and stamps the research artefact’s `transfer_state = 'transferred'`.  
+- **T4 (Ops-1):** Ops lab tech sees only ops-scope artefacts; ancestor research metadata remains hidden (RLS on artefacts/traits).  
+- **T5 (Ops-2,3):** Normalisation & pooling flows record `process_io` entries with `multiplex_group`, and pooled outputs inherit per-project scope tags.  
+- **T6 (Ops-4 + Vis-2):** Data product artefacts tagged for both ops and research scopes enforce per-contributor visibility in mixed pools.  
+- **T7 (Ops-5):** Return handover attaches research scope references (`returned_output` relationships) and flips ops artefact `transfer_state` to `'returned'`; ops users cannot see the research-only references.  
+- **T8:** Correction propagation applies only to whitelisted fields in `artefact_relationships.metadata`, leaving other fields untouched.  
+- **T9 (Vis-4):** Instrument account can read inputs and write outputs/QC inside its ops scope but remains denied access outside.  
+- **T10:** Audit log rows capture handover, propagation, and return events with correct actor + scope context.  
+- **T11:** Attempted cross-scope reads (e.g. Alpha user on Beta artefacts) still return zero rows after lineage enhancements.  
+- **T12:** Column-level guard rejects unauthorized field edits (trigger error).
+
+### 11.1 Implementation Backlog (TDD)
+- **security.sql::handover_visibility** — add fixtures that call `sp_handover_to_ops`, assert `app_provenance.can_access_artefact` grants lineage-based reads, and confirm Alpha cannot see Beta artefacts.  
+- **security.sql::ops_personas** — extend instrument/ops user sections to exercise pooled processes, validating `process_io` visibility and QC write restrictions.  
+- **security.sql::data_product_return** — script a pooled sequencing run, call `sp_return_from_ops`, ensure returned references are visible only to contributing scopes, and verify audit rows.  
+- **security.sql::propagation_controls** — cover whitelist updates by toggling trait values and confirming propagation fires (and non-whitelisted fields remain unchanged).  
+- **security.sql::negative_cases** — add regression tests for cross-scope read attempts and mutation attempts once `transfer_state = 'returned'`.
 
 ---
 
@@ -519,11 +397,11 @@ $$;
 
 ## 13) Operational & Performance Notes
 
-- **Indexes:** `artefacts(scope_id)`, `lineage(child_artefact_id)`, `lineage(parent_artefact_id)`, `data_product_attribution(source_scope_id)`, `scope_memberships(user_id,scope_id)`.  
-- **Lineage depth:** For very deep DAGs, consider materialized ancestor tables updated on commit for faster queries.  
-- **Function safety:** `stable` functions; `SECURITY DEFINER` only where necessary; fixed `search_path`.  
-- **Grants:** Revoke direct table access from app role; allow `EXECUTE` on helper functions and procedures only.  
-- **Backfills:** Assign scopes and build lineage for existing records before enabling RLS in production.
+- **Indexes:** consider `(relationship_type, parent_artefact_id)` on `artefact_relationships`, `(process_instance_id, direction, artefact_id)` on `process_io`, and GIN on `artefact_relationships.metadata` for whitelist lookups.  
+- **Lineage depth:** For very deep DAGs, materialised ancestor tables (or cached closure tables) remain optional but should reuse the existing provenance graph.  
+- **Function safety:** Keep helpers `stable`, `SECURITY DEFINER` only where necessary, and always fix `search_path`.  
+- **Grants:** Revoke direct table access from application roles; expose only the stored procedures/views documented here.  
+- **Backfills:** Tag legacy ops artefacts with `artefact_scopes`, seed `transfer_state` traits, and populate relationship metadata before enabling the enhanced RLS.
 
 ---
 

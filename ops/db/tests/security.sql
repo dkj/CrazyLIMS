@@ -545,6 +545,314 @@ END;
 $$;
 
 SET ROLE app_admin;
+
+DO $$
+DECLARE
+  v_admin uuid;
+  v_operator uuid;
+  v_researcher uuid;
+  v_research_scope uuid;
+  v_ops_scope uuid;
+  v_source uuid;
+  v_duplicate uuid;
+  v_ops_scope_key text := format('ops:test:%s', replace(gen_random_uuid()::text, '-', ''));
+  v_value text;
+  v_numeric numeric;
+BEGIN
+  SELECT id INTO v_admin FROM app_core.users WHERE email = 'admin@example.org';
+  IF v_admin IS NULL THEN
+    RAISE EXCEPTION 'Admin seed user missing';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_admin::text, true);
+  PERFORM set_config('app.actor_identity', 'admin@example.org', true);
+  PERFORM set_config('app.roles', 'app_admin', true);
+
+  SELECT artefact_id
+    INTO v_source
+    FROM app_provenance.artefacts
+   WHERE external_identifier = 'SAMPLE-GP-001-A';
+  IF v_source IS NULL THEN
+    RAISE EXCEPTION 'Expected sample artefact missing';
+  END IF;
+
+  SELECT scope_id
+    INTO v_research_scope
+    FROM app_security.scopes
+   WHERE scope_key = 'dataset:pilot_plasma';
+  IF v_research_scope IS NULL THEN
+    RAISE EXCEPTION 'Dataset scope missing';
+  END IF;
+
+  v_ops_scope := app_provenance.sp_handover_to_ops(
+    p_research_scope_id => v_research_scope,
+    p_ops_scope_key     => v_ops_scope_key,
+    p_artefact_ids      => ARRAY[v_source],
+    p_field_whitelist   => ARRAY['well_volume_ul']
+  );
+
+  IF v_ops_scope IS NULL THEN
+    RAISE EXCEPTION 'Handover did not return ops scope id';
+  END IF;
+
+  SELECT child_artefact_id
+    INTO v_duplicate
+    FROM app_provenance.artefact_relationships
+   WHERE parent_artefact_id = v_source
+     AND relationship_type = 'handover_duplicate'
+   ORDER BY created_at DESC
+   LIMIT 1;
+
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Handover duplicate artefact not recorded';
+  END IF;
+
+  IF NOT EXISTS (
+        SELECT 1
+          FROM app_provenance.artefact_scopes
+         WHERE artefact_id = v_duplicate
+           AND scope_id = v_ops_scope
+       ) THEN
+    RAISE EXCEPTION 'Ops duplicate missing scope membership';
+  END IF;
+
+  SELECT metadata ->> 'well_volume_ul'
+    INTO v_value
+    FROM app_provenance.artefacts
+   WHERE artefact_id = v_duplicate;
+
+  IF v_value IS NULL THEN
+    RAISE EXCEPTION 'Ops duplicate missing whitelisted metadata (well_volume_ul)';
+  END IF;
+
+  SELECT trim(both '"' FROM tv.value::text)
+    INTO v_value
+    FROM app_provenance.artefact_trait_values tv
+    JOIN app_provenance.artefact_traits t ON t.trait_id = tv.trait_id
+   WHERE tv.artefact_id = v_source
+    AND t.trait_key = 'transfer_state'
+   ORDER BY tv.effective_at DESC
+   LIMIT 1;
+
+  IF v_value <> 'transferred' THEN
+    RAISE EXCEPTION 'Source artefact transfer_state expected transferred, saw %', v_value;
+  END IF;
+
+  SELECT metadata ->> 'well_volume_ul'
+    INTO v_value
+    FROM app_provenance.artefacts
+   WHERE artefact_id = v_duplicate;
+  v_numeric := (v_value)::numeric;
+  IF v_numeric IS NULL THEN
+    RAISE EXCEPTION 'Research visible volume should parse to numeric, saw %', v_value;
+  END IF;
+
+  PERFORM set_config('session.handover_source', v_source::text, false);
+  PERFORM set_config('session.handover_duplicate', v_duplicate::text, false);
+  PERFORM set_config('session.handover_research_scope', v_research_scope::text, false);
+  PERFORM set_config('session.handover_ops_scope', v_ops_scope::text, false);
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_operator;
+
+DO $$
+DECLARE
+  v_operator uuid := current_setting('session.operator_id', false)::uuid;
+  v_duplicate uuid := current_setting('session.handover_duplicate', false)::uuid;
+BEGIN
+  IF v_operator IS NULL THEN
+    RAISE EXCEPTION 'Operator session id missing';
+  END IF;
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Handover duplicate id missing';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_operator::text, true);
+  PERFORM set_config('app.actor_identity', 'ops@example.org', true);
+  PERFORM set_config('app.roles', 'app_operator', true);
+
+  IF NOT app_provenance.can_update_handover_metadata(v_duplicate) THEN
+    RAISE EXCEPTION 'Operator should be permitted to adjust ops duplicate metadata before return';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_researcher uuid := current_setting('session.researcher_id', false)::uuid;
+  v_duplicate uuid := current_setting('session.handover_duplicate', false)::uuid;
+  v_allowed boolean;
+BEGIN
+  IF v_researcher IS NULL THEN
+    SELECT id INTO v_researcher FROM app_core.users WHERE email = 'alice@example.org';
+  END IF;
+  IF v_researcher IS NULL THEN
+    RAISE EXCEPTION 'Researcher session id missing';
+  END IF;
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Handover duplicate id missing for researcher check';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_researcher::text, true);
+  PERFORM set_config('app.actor_identity', 'alice@example.org', true);
+  PERFORM set_config('app.roles', 'app_researcher', true);
+
+  SELECT app_provenance.can_access_artefact(v_duplicate)
+    INTO v_allowed;
+  IF NOT COALESCE(v_allowed, false) THEN
+    RAISE EXCEPTION 'Researcher could not see ops duplicate via lineage';
+  END IF;
+
+  SELECT app_provenance.can_update_handover_metadata(v_duplicate)
+    INTO v_allowed;
+  IF COALESCE(v_allowed, false) THEN
+    RAISE EXCEPTION 'Researcher should not be allowed to update ops duplicate metadata';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_admin;
+
+DO $$
+DECLARE
+  v_admin uuid;
+  v_source uuid := current_setting('session.handover_source', false)::uuid;
+  v_duplicate uuid := current_setting('session.handover_duplicate', false)::uuid;
+  v_research_scope uuid := current_setting('session.handover_research_scope', false)::uuid;
+  v_value text;
+  v_numeric numeric;
+BEGIN
+  SELECT id INTO v_admin FROM app_core.users WHERE email = 'admin@example.org';
+  IF v_admin IS NULL THEN
+    RAISE EXCEPTION 'Admin seed user missing (phase 2)';
+  END IF;
+  IF v_source IS NULL OR v_duplicate IS NULL OR v_research_scope IS NULL THEN
+    RAISE EXCEPTION 'Handover context missing for admin propagation phase';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_admin::text, true);
+  PERFORM set_config('app.actor_identity', 'admin@example.org', true);
+  PERFORM set_config('app.roles', 'app_admin', true);
+
+  UPDATE app_provenance.artefacts
+     SET metadata = (metadata - 'well_volume_ul') || jsonb_build_object('well_volume_ul', 432)
+   WHERE artefact_id = v_source;
+
+  SELECT (metadata ->> 'well_volume_ul')::numeric
+    INTO v_numeric
+    FROM app_provenance.artefacts
+   WHERE artefact_id = v_duplicate;
+
+  IF v_numeric <> 432 THEN
+    RAISE EXCEPTION 'Whitelisted propagation failed, expected 432 saw %', v_numeric;
+  END IF;
+
+  UPDATE app_provenance.artefacts
+     SET metadata = metadata || jsonb_build_object('sensitive_note', 'keep private')
+   WHERE artefact_id = v_source;
+
+  IF EXISTS (
+        SELECT 1
+        FROM app_provenance.artefacts
+       WHERE artefact_id = v_duplicate
+         AND metadata ? 'sensitive_note'
+       ) THEN
+    RAISE EXCEPTION 'Non-whitelisted metadata propagated unexpectedly';
+  END IF;
+
+  PERFORM app_provenance.sp_return_from_ops(v_duplicate, ARRAY[v_research_scope]);
+
+  SELECT trim(both '"' FROM tv.value::text)
+    INTO v_value
+    FROM app_provenance.artefact_trait_values tv
+    JOIN app_provenance.artefact_traits t ON t.trait_id = tv.trait_id
+   WHERE tv.artefact_id = v_duplicate
+     AND t.trait_key = 'transfer_state'
+   ORDER BY tv.effective_at DESC
+   LIMIT 1;
+
+  IF v_value <> 'returned' THEN
+    RAISE EXCEPTION 'Ops artefact transfer_state expected returned, saw %', v_value;
+  END IF;
+
+  IF NOT EXISTS (
+        SELECT 1
+        FROM app_provenance.artefact_scopes
+       WHERE artefact_id = v_duplicate
+         AND scope_id = v_research_scope
+       ) THEN
+    RAISE EXCEPTION 'Returned ops artefact missing research scope membership';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_operator;
+
+DO $$
+DECLARE
+  v_operator uuid := current_setting('session.operator_id', false)::uuid;
+  v_duplicate uuid := current_setting('session.handover_duplicate', false)::uuid;
+  v_allowed boolean;
+BEGIN
+  IF v_operator IS NULL OR v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Operator post-return context missing';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_operator::text, true);
+  PERFORM set_config('app.actor_identity', 'ops@example.org', true);
+  PERFORM set_config('app.roles', 'app_operator', true);
+
+  SELECT app_provenance.can_update_handover_metadata(v_duplicate)
+    INTO v_allowed;
+  IF COALESCE(v_allowed, false) THEN
+    RAISE EXCEPTION 'Operator should not update metadata once returned';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_researcher uuid := current_setting('session.researcher_id', false)::uuid;
+  v_duplicate uuid := current_setting('session.handover_duplicate', false)::uuid;
+  v_allowed boolean;
+BEGIN
+  IF v_researcher IS NULL THEN
+    SELECT id INTO v_researcher FROM app_core.users WHERE email = 'alice@example.org';
+  END IF;
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Researcher post-return duplicate id missing';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_researcher::text, true);
+  PERFORM set_config('app.actor_identity', 'alice@example.org', true);
+  PERFORM set_config('app.roles', 'app_researcher', true);
+
+  SELECT app_provenance.can_access_artefact(v_duplicate)
+    INTO v_allowed;
+  IF NOT COALESCE(v_allowed, false) THEN
+    RAISE EXCEPTION 'Researcher lost visibility after return';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_admin;
 DO $$
 BEGIN
   PERFORM set_config('session.alice_id', (SELECT id::text FROM app_core.users WHERE email = 'alice@example.org'), false);
