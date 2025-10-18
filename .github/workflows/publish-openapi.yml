@@ -1,0 +1,86 @@
+name: Publish OpenAPI spec
+
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build OpenAPI artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare GitHub Pages content
+        run: |
+          mkdir -p dist
+          cp contracts/postgrest/openapi.json dist/openapi.json
+          cat <<'HTML' > dist/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>CrazyLIMS OpenAPI</title>
+            <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+            <style>
+              body {
+                margin: 0;
+                background: #fafafa;
+              }
+              .swagger-ui .topbar {
+                background-color: #0a4a86;
+              }
+            </style>
+          </head>
+          <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+            <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js" crossorigin="anonymous"></script>
+            <script>
+              window.addEventListener('load', () => {
+                SwaggerUIBundle({
+                  url: 'openapi.json',
+                  dom_id: '#swagger-ui',
+                  presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                  ],
+                  layout: 'StandaloneLayout'
+                });
+              });
+            </script>
+          </body>
+          </html>
+          HTML
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
