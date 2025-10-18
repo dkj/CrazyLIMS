@@ -75,10 +75,29 @@ jobs:
           </html>
           HTML
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v4
+      - name: Ensure GitHub Pages is enabled
+        uses: actions/github-script@v7
+        continue-on-error: true
         with:
-          enablement: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            try {
+              await github.rest.repos.createPagesSite({
+                owner,
+                repo,
+                build_type: 'workflow'
+              });
+              core.info('GitHub Pages site created or already existed.');
+            } catch (error) {
+              if (error.status === 409) {
+                core.info('GitHub Pages site already configured.');
+              } else if (error.status === 403) {
+                core.warning('Missing permissions to create a Pages site automatically. Please enable Pages manually if deployment fails.');
+              } else {
+                throw error;
+              }
+            }
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
