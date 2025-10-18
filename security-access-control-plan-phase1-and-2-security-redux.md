@@ -413,6 +413,7 @@ $$;
 - `20251010015000_security_redux_handover.sql` introduces helper functions, the `transfer_state` trait, and the propagation trigger. Rollback simply drops the helpers and trait rows; for production rollbacks ensure no workflows rely on the new procedures.  
 - `20251010015100_security_redux_handover_views.sql` is read-only: it backfills missing propagation metadata and creates `app_core.v_handover_overview`. Rollback removes the view; the metadata backfill is idempotent and safe to rerun.  
 - Backfill plan: run the migrations, execute the provided backfill script (or rerun the metadata update) in a maintenance window, then re-run `make db/test` to verify RLS behaviour before releasing to UI clients.
+- `20251010015300_security_redux_story_data.sql` seeds an end-to-end demo dataset covering **Project Alpha**, **Project Beta**, and the **Ops Lab** facility. It creates the study scopes, enrols realistic personas (researchers, ops techs, instrument account), and populates the entire provenance workflow (virtual donors → P202/D203/L204 → ops plates → pooling → returned readsets). The migration tags every artefact, relationship, and trait with `seed=security-redux-story` so `migrate:down` removes the dataset cleanly.
 
 ---
 

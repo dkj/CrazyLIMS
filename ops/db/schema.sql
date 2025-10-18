@@ -151,7 +151,18 @@ BEGIN
     FROM app_provenance.artefact_relationships rel
     JOIN related r
       ON rel.child_artefact_id = r.artefact_id
-    WHERE rel.relationship_type = ANY (ARRAY['derived_from','produced_output','handover_duplicate','returned_output'])
+    WHERE rel.relationship_type = ANY (
+      ARRAY[
+        'derived_from',
+        'produced_output',
+        'handover_duplicate',
+        'returned_output',
+        'workflow:automation',
+        'normalized_from',
+        'pooled_input',
+        'virtual_source'
+      ]
+    )
   )
   SELECT TRUE
     INTO v_has
