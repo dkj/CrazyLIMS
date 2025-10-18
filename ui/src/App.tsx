@@ -22,7 +22,8 @@ import type {
   LabwareInventoryRow,
   StorageTreeRow,
   TransactionContextActivityRow,
-  AuditRecentActivityRow
+  AuditRecentActivityRow,
+  HandoverOverviewRow
 } from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
@@ -30,16 +31,32 @@ const API_BASE = POSTGREST_URL.replace(/\/$/, "");
 
 const personaLabels: Record<string, string> = {
   admin: "Administrator",
-  operator: "Operator",
+  operator: "Ops Operator",
   researcher: "Researcher (Alice)",
-  researcher_bob: "Researcher (Bob)"
+  researcher_bob: "Researcher (Bob)",
+  roberto: "Researcher (Roberto – Alpha Virtual)",
+  phillipa: "Researcher (Phillipa – Alpha Lab Lead)",
+  ross: "Researcher (Ross – Alpha Lab Tech)",
+  eric: "Researcher (Eric – Beta)",
+  lucy: "Ops Tech (Lucy)",
+  fred: "Ops Tech (Fred)",
+  instrument_alpha: "Instrument (Alpha Sequencer)",
+  external: "External Collaborator"
 };
 
 const personaTokenPaths: Record<string, string> = {
   admin: "/tokens/admin.jwt",
   operator: "/tokens/operator.jwt",
   researcher: "/tokens/researcher.jwt",
-  researcher_bob: "/tokens/researcher_bob.jwt"
+  researcher_bob: "/tokens/researcher_bob.jwt",
+  roberto: "/tokens/roberto.jwt",
+  phillipa: "/tokens/phillipa.jwt",
+  ross: "/tokens/ross.jwt",
+  eric: "/tokens/eric.jwt",
+  lucy: "/tokens/lucy.jwt",
+  fred: "/tokens/fred.jwt",
+  instrument_alpha: "/tokens/instrument_alpha.jwt",
+  external: "/tokens/external.jwt"
 };
 
 function decodeJwt(token: string | undefined) {
@@ -200,6 +217,10 @@ export default function App() {
   );
   const sampleLineageView = useGet<SampleLineageRow>(
     "/v_sample_lineage",
+    token
+  );
+  const handoverOverviewView = useGet<HandoverOverviewRow>(
+    "/v_handover_overview",
     token
   );
   const labwareInventoryView = useGet<LabwareInventoryRow>(
@@ -463,15 +484,18 @@ export default function App() {
           samples={sampleView.data}
           lineage={sampleLineageView.data}
           labwareInventory={labwareInventoryView.data}
+          handovers={handoverOverviewView.data}
           loading={
             sampleView.loading ||
             sampleLineageView.loading ||
-            labwareInventoryView.loading
+            labwareInventoryView.loading ||
+            handoverOverviewView.loading
           }
           error={
             sampleView.error ??
             sampleLineageView.error ??
-            labwareInventoryView.error
+            labwareInventoryView.error ??
+            handoverOverviewView.error
           }
           onSelectLabware={handleLabwareSelectionWithNavigation}
           selectedLabwareId={focusedLabwareId}

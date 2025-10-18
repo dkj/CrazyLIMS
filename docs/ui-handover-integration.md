@@ -64,6 +64,18 @@ When calling `sp_handover_to_ops`, the payload’s `field_whitelist` controls wh
 - Offer a controlled editor (e.g. multi-select) to append allowable keys before the handover is initiated.  
 - Surface audit-friendly information pulled from the view’s `handover_at`/`returned_at` columns.
 
+## Provenance Graph UX Ideas
+
+Leverage the view and trait data when rendering provenance graphs:
+
+- **Node styling:** colour/badge nodes using `research_transfer_state` and `ops_transfer_state` (e.g. highlight `transferred` artefacts awaiting return).  
+- **Edge labels:** label `handover_duplicate` edges with the ops scope key and the `propagation_whitelist` members so users see exactly what metadata flows.  
+- **Scope tooltips:** display `research_scope_keys` / `ops_scope_keys` in hover/side panels to explain why a node is visible.  
+- **Timeline filters:** use `handover_at` / `returned_at` to filter the graph (e.g. “show handovers from the last 7 days” or “pending returns”).  
+- **Access hints:** if the UI detects truncated traversals (no more descendants but the user expects outputs), surface an informative banner reminding them that RLS hides artefacts outside their scopes.
+
+All of these rely on `app_core.v_handover_overview` and the existing provenance graph data—no extra queries are required beyond joining the view to the graph datasource.
+
 ## API Usage Patterns
 
 ### PostGraphile (GraphQL)
@@ -144,7 +156,44 @@ Assuming PostgREST exposes RPC endpoints:
 
 - Read the overview view with standard filters:
   ```http
-  GET /app_core.v_handover_overview?ops_transfer_state=eq.transferred&order=handover_at.desc
+  GET /v_handover_overview?ops_transfer_state=eq.transferred&order=handover_at.desc
   ```
 
 Keep JWT claims aligned with the DB scope memberships so RLS grants the correct slice of the view.
+
+## Rendering the Annotated Graph in the Web UI
+
+A typical React/TypeScript stack can render the annotated provenance graph by combining the existing graph API with `v_handover_overview` data:
+
+1. **Fetch graph topology** (whatever endpoint already drives the provenance view).  
+2. **Fetch handover annotations** from the view, keyed by `research_artefact_id` / `ops_artefact_id`.  
+3. **Merge** the annotations into the graph nodes/edges before rendering.
+
+Pseudo-code outline:
+
+```ts
+const { graph } = await api.fetchProvenanceGraph(rootArtefactId);
+const { nodes: handovers } = await gqlVisibleHandovers();
+const byOpsId = new Map(handovers.map(h => [h.opsArtefactId, h]));
+const byResearchId = new Map(handovers.map(h => [h.researchArtefactId, h]));
+
+const enrichedNodes = graph.nodes.map(node => {
+  const annotation = byOpsId.get(node.id) ?? byResearchId.get(node.id);
+  return {
+    ...node,
+    transferState: annotation?.opsTransferState ?? annotation?.researchTransferState,
+    scopeKeys: annotation?.opsScopeKeys ?? annotation?.researchScopeKeys,
+    propagationWhitelist: annotation?.propagationWhitelist ?? [],
+    handoverAt: annotation?.handoverAt,
+    returnedAt: annotation?.returnedAt,
+  };
+});
+```
+
+For rendering:
+
+- Use a graph library (e.g. Cytoscape, D3, Vis.js) to colour nodes by `transferState`.  
+- Overlay tooltips showing scope keys and last handover/return timestamps.  
+- For edges where `relationship_type === 'handover_duplicate'`, display a badge containing the ops scope and whitelist summary.
+
+Because RLS already trims the datasets per user, the UI can safely render the merged graph without extra filtering logic.
