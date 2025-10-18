@@ -120,6 +120,72 @@ The labware and storage explorer will not allow reset of focus or manual changin
 
 Can we put the different sections in different pages/routes, maybe with a section section on the left? Also, we need to cope gracefully with a large number of records, so provide pagination over a certain number.
 
+
+### re consider the access control
+
+Before moving on beyond phase2, (for the CrazyLIMS project), we need to reconsider requirements and options for the security and role model. The use of roles and RLS is good. But may not currently meet our future requirements.
+
+We need to consider that access to data and processes is likely to be dictated by the studies/projects/(groups of samples) and the people/accounts allowed access to them.
+
+For  a study, there may be  people who only enter/write virtual entities, and others, who doing work in the lab, will need to enter/write info for labware and processes undertaken ( after  an input plate registration marking the virtual entities as ancestors to the physical samples in the wells). Some people may be in both sets of people. For an all-in-one research lab, typical user of the ELN functionality, everyone in that study is likely to need to read all the data associated with it.
+
+There may also be situations where a study has a set of people (research team) who are able to see all the virtual entity information and samples associated with them, but the lab processing is done by another set of people (production service lab) who should not be able to see the upstream  virtual entity, but who need to create/write the processes and samples/entities created downstream. The research team should be able to read all of the information for samples downstream of theirs (but not write in the places the service lab work).
+
+Instruments and their automations will only be able read and update the samples/entities and processes local to their part of the provenence structure.
+
+What options do we have for access control?
+
+#### handover between groups/projects
+
+We need to consider handover between teams/groups of people more explicitly I think. Also, the observability  and confidentiality though a multiplexing process in an operations lab for multiple research labs.
+
+Let's consider two research studies (with differnt teams of people) and an operations lab.
+
+Research lab working on project Alpha:
+- Roberto (non lab researcher) registers samples (virtual entities) with project "alpha", donor id, donor age, region collected and donor gender for some blood samples
+- Phillipa (researcher) received a plate "P202" with a manifest listing plate positions and donor ids for project "alpha", registers in LIMS linking with the prior "ancestor virtual samples"
+- Phillipa processes plate to DNA fragmented to 400bp size in plate "D203"
+- Ross (lab assistent) processes plate "D203" to indexed sequencing libraries in plate "L204" where the samples here are annotated with the i5 and i7 sequence tags
+- Ross delivers plate "L203" to operations lab  (so in the LIMS, perhaps generating a new version of the plate in LIMS owned by operations where ids and key data like expected fragment size and sequence tags are visible, leaving a copy with "transfered" states owned by the research lab )
+
+Second research lab working project Beta:
+- Eric (non lab researcher) registers samples (virtual entities) with project "alpha", tube barcodes, donor id, donor age, region collected and donor gender for some blood samples
+
+Operations Lab
+- receive 270 tubes with blood samples for project "alpha"
+- Lucy loads blood to seq library automation machine with tubes, outputs 3 plates L401, L402 and L403
+- Fred quantifies plates L203, L401, L402 and L403, and creates normalised versions N203, N401, N402 and N403
+- Fred pools N203, N401, N402 and N403 to library pool in tube LT5
+- Fred  loads sequencing instrument with LT5 and appropriate manifest (created from ancestor tag sequence information)
+- sequencing instrument output is processed by manifest to produce 366 data products which are linked, as well as back to LT5 via sequencing process but to upstream to wells in normalised indexed sequencing library plates  N203, N401, N402 and N403
+- data product references in LIMS are copied/marked as transfered back to research labs
+
+Required Visibility:
+- the lab staff should be able to see all info on samples received in their lab, but not upstream info done in the research labs, nor downstream done after artefacts are  handed back to the research labs.
+- the research labs should be able to see all info on artefects in their studies, the artefacts in the operations lab derived from theirs and the associated processes, but not the data corresponding to the other lab's research project even if it is the same  library pool used for sequencing.
+
+##### 
+
+Re 1 - duplication of entities with minimal appropriate transfer of metadata is okay, so long there is a mechanism for propagating corrections. there should still be a chain of providence from "transferred" state originating lab artefects to downstream duplicate artefacts.
+
+Re 2 - if duplication with minimal appropriate metadata is done then this it moot, no?
+
+Re 3 - yes, it is essential each research team only see data products that trace back to their project's samples — even if those were pooled together samples from other projects from other research teams
+
+Re 4 - PostgreSQL and RLS as the enforcement point for these policies is the preferred boundary
+
+##### get a plan
+
+As an expert architect provide, in MarkDown format suitable for inclusion in the repo, a detailed plan for expert developers to implement for the implementation of these clarified security requirements.
+
+This should include 
+- a concise summary of the clarified security requirements
+- an enumeration of the stories from which this has been created, so that they may be used for test cases
+- the requirement that this logic should be implemented at the database level
+- that the handover mechanism should be considered explicitly e.g. for a research group working on particular study to an operations lab for a standardised service on some of their samples and the return of that lab's output artefacts (physical or data products) to the research group/study
+- the mechanism for doing this offered in the options in our conversation, consistent with the items immediately above in this list.
+
+
 ### Later
 
 
