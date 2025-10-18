@@ -259,6 +259,41 @@ $$;
 
 RESET ROLE;
 
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_self_id uuid := NULL;
+  v_exists integer;
+BEGIN
+  BEGIN
+    v_self_id := current_setting('session.alice_id', true)::uuid;
+  EXCEPTION
+    WHEN others THEN
+      v_self_id := NULL;
+  END;
+
+  IF v_self_id IS NULL THEN
+    SELECT id INTO v_self_id FROM app_core.users WHERE email = 'alice@example.org';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_self_id::text, true);
+  PERFORM set_config('app.actor_identity', 'alice@example.org', true);
+  PERFORM set_config('app.roles', 'app_researcher', true);
+
+  SELECT 1 INTO v_exists
+  FROM app_core.v_handover_overview
+  LIMIT 1;
+
+  -- No exception means the view is accessible under RLS.
+  IF v_exists IS NULL THEN
+    RAISE NOTICE 'No handover rows visible for researcher (expected if none created)';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
 -------------------------------------------------------------------------------
 -- Convenience views include slotless labware contents
 -------------------------------------------------------------------------------

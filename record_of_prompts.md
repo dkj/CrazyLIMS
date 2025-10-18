@@ -185,6 +185,9 @@ This should include
 - that the handover mechanism should be considered explicitly e.g. for a research group working on particular study to an operations lab for a standardised service on some of their samples and the return of that lab's output artefacts (physical or data products) to the research group/study
 - the mechanism for doing this offered in the options in our conversation, consistent with the items immediately above in this list.
 
+##### execute plan
+
+As an expert software developer who favours clarity through minimal architecture and reusing existing patterns in their solutions, review the security-access-control-plan-phase1-and-2-security-redux.md plan with a view to starting to implement it. Keep changes as small as possible (e.g. exploit existing provenance graph capability rather than adding new tables). Favour test driven development where pragmatic. Ensure good explanatory code  and test documentation, good test coverage, and that the tests pass, so that the reviewer's task is straightforward.
 
 ### Later
 

@@ -72,6 +72,7 @@ Phase 2 Redux already delivered the tables we need. Security Redux focuses on 
 - `app_provenance.artefact_scopes` remains the canonical mapping between artefacts and scopes. Ops duplicates and returned deliverables gain extra rows here; transfer state is captured in `artefact_traits` (new trait key `transfer_state`) so we retain history without altering the base table.  
 - Duplication links are expressed with `app_provenance.artefact_relationships` by introducing a new `relationship_type = 'handover_duplicate'`. Relationship metadata holds the propagated field whitelist and timestamps, keeping everything in one provenance graph.  
 - Existing recursive views (`app_core.v_sample_lineage`, `app_provenance.v_lineage_summary`) just need minor filters to surface downstream ops artefacts; no new tables. Add a covering index on `(relationship_type, parent_artefact_id)` if performance testing proves it useful.
+- The only new schema artefacts are helper functions/procedures plus the `transfer_state` trait and the `app_core.v_handover_overview` view. Both reuse the existing trait infrastructure and provenance tables—no additional base tables or columns are introduced.
 
 ### 3.3 Pools, Multiplexing & Data Products
 - Pools, normalisation runs, and demultiplexed outputs continue to live in `app_provenance.process_instances` with `process_io.direction IN ('pooled_input','pooled_output')` and `multiplex_group` populated. Where needed we add seed data for new `process_type` definitions—no schema change.  
@@ -198,6 +199,11 @@ $$;
 - `app_provenance.v_lineage_summary` gains columns highlighting whether an artefact is ops-scoped, returned, or pending return (driven from traits + relationship metadata).  
 - A new view `app_provenance.v_data_products_per_scope` (likely materialised in production) joins artefact scopes, process IO, and handover metadata to surface exactly which deliverables a user may see.  
 - Existing front-end views (`v_sample_overview`, `v_labware_contents`, etc.) should be regression-tested; any scope filters they contain stay unchanged because visibility continues to flow through `can_access_artefact`.
+
+### UI Integration (DB-side Support)
+- Use `app_core.v_handover_overview` for handover dashboards; it exposes both artefact names, scope memberships, transfer-state traits, whitelists, and audit timestamps in a single RLS-respecting view.  
+- `docs/ui-handover-integration.md` outlines how to call the stored procedures and leverage the view from the web UI.  
+- The view keeps `propagation_whitelist` as a text array for easy surfacing in multi-select widgets; the underlying metadata remains authoritative for propagation logic.
 
 ---
 
@@ -402,6 +408,11 @@ $$;
 - **Function safety:** Keep helpers `stable`, `SECURITY DEFINER` only where necessary, and always fix `search_path`.  
 - **Grants:** Revoke direct table access from application roles; expose only the stored procedures/views documented here.  
 - **Backfills:** Tag legacy ops artefacts with `artefact_scopes`, seed `transfer_state` traits, and populate relationship metadata before enabling the enhanced RLS.
+
+### Migration Footprint & Rollback
+- `20251010015000_security_redux_handover.sql` introduces helper functions, the `transfer_state` trait, and the propagation trigger. Rollback simply drops the helpers and trait rows; for production rollbacks ensure no workflows rely on the new procedures.  
+- `20251010015100_security_redux_handover_views.sql` is read-only: it backfills missing propagation metadata and creates `app_core.v_handover_overview`. Rollback removes the view; the metadata backfill is idempotent and safe to rerun.  
+- Backfill plan: run the migrations, execute the provided backfill script (or rerun the metadata update) in a maintenance window, then re-run `make db/test` to verify RLS behaviour before releasing to UI clients.
 
 ---
 

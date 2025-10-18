@@ -1663,6 +1663,208 @@ CREATE VIEW app_core.v_audit_recent_activity AS
 
 
 --
+-- Name: artefact_relationships; Type: TABLE; Schema: app_provenance; Owner: -
+--
+
+CREATE TABLE app_provenance.artefact_relationships (
+    relationship_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    parent_artefact_id uuid NOT NULL,
+    child_artefact_id uuid NOT NULL,
+    relationship_type text NOT NULL,
+    process_instance_id uuid,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid,
+    CONSTRAINT artefact_relationships_check CHECK ((parent_artefact_id <> child_artefact_id)),
+    CONSTRAINT artefact_relationships_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT artefact_relationships_relationship_type_check CHECK ((relationship_type = lower(relationship_type)))
+);
+
+ALTER TABLE ONLY app_provenance.artefact_relationships FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: artefact_scopes; Type: TABLE; Schema: app_provenance; Owner: -
+--
+
+CREATE TABLE app_provenance.artefact_scopes (
+    artefact_id uuid NOT NULL,
+    scope_id uuid NOT NULL,
+    relationship text DEFAULT 'primary'::text NOT NULL,
+    assigned_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    assigned_by uuid,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT artefact_scopes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT artefact_scopes_relationship_check CHECK ((relationship = ANY (ARRAY['primary'::text, 'supplementary'::text, 'facility'::text, 'dataset'::text, 'derived_from'::text])))
+);
+
+ALTER TABLE ONLY app_provenance.artefact_scopes FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: artefact_trait_values; Type: TABLE; Schema: app_provenance; Owner: -
+--
+
+CREATE TABLE app_provenance.artefact_trait_values (
+    artefact_trait_value_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    artefact_id uuid NOT NULL,
+    trait_id uuid NOT NULL,
+    value jsonb NOT NULL,
+    effective_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    recorded_by uuid,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT artefact_trait_values_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text))
+);
+
+ALTER TABLE ONLY app_provenance.artefact_trait_values FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: artefact_traits; Type: TABLE; Schema: app_provenance; Owner: -
+--
+
+CREATE TABLE app_provenance.artefact_traits (
+    trait_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    trait_key text NOT NULL,
+    display_name text NOT NULL,
+    description text,
+    data_type text NOT NULL,
+    allowed_values jsonb,
+    default_value jsonb,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT artefact_traits_allowed_values_check CHECK (((allowed_values IS NULL) OR (jsonb_typeof(allowed_values) = ANY (ARRAY['array'::text, 'object'::text])))),
+    CONSTRAINT artefact_traits_data_type_check CHECK ((data_type = ANY (ARRAY['boolean'::text, 'text'::text, 'integer'::text, 'numeric'::text, 'json'::text, 'enum'::text]))),
+    CONSTRAINT artefact_traits_default_value_check CHECK (((default_value IS NULL) OR (jsonb_typeof(default_value) = ANY (ARRAY['object'::text, 'array'::text, 'string'::text, 'number'::text, 'boolean'::text, 'null'::text])))),
+    CONSTRAINT artefact_traits_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT artefact_traits_trait_key_check CHECK ((trait_key = lower(trait_key)))
+);
+
+ALTER TABLE ONLY app_provenance.artefact_traits FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: artefacts; Type: TABLE; Schema: app_provenance; Owner: -
+--
+
+CREATE TABLE app_provenance.artefacts (
+    artefact_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    artefact_type_id uuid NOT NULL,
+    name text NOT NULL,
+    external_identifier text,
+    description text,
+    status text DEFAULT 'active'::text NOT NULL,
+    is_virtual boolean DEFAULT false NOT NULL,
+    quantity numeric,
+    quantity_unit text,
+    quantity_estimated boolean DEFAULT false NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    origin_process_instance_id uuid,
+    container_artefact_id uuid,
+    container_slot_id uuid,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT artefacts_check CHECK (((container_slot_id IS NULL) OR (container_artefact_id IS NOT NULL))),
+    CONSTRAINT artefacts_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT artefacts_name_check CHECK ((name <> ''::text)),
+    CONSTRAINT artefacts_quantity_check CHECK (((quantity IS NULL) OR (quantity >= (0)::numeric))),
+    CONSTRAINT artefacts_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'reserved'::text, 'consumed'::text, 'completed'::text, 'archived'::text, 'retired'::text])))
+);
+
+ALTER TABLE ONLY app_provenance.artefacts FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: scopes; Type: TABLE; Schema: app_security; Owner: -
+--
+
+CREATE TABLE app_security.scopes (
+    scope_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    scope_key text NOT NULL,
+    scope_type text NOT NULL,
+    display_name text NOT NULL,
+    description text,
+    parent_scope_id uuid,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT scopes_check CHECK (((parent_scope_id IS NULL) OR (parent_scope_id <> scope_id))),
+    CONSTRAINT scopes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT scopes_scope_key_check CHECK ((scope_key = lower(scope_key))),
+    CONSTRAINT scopes_scope_type_check CHECK ((scope_type = lower(scope_type)))
+);
+
+ALTER TABLE ONLY app_security.scopes FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: v_handover_overview; Type: VIEW; Schema: app_core; Owner: -
+--
+
+CREATE VIEW app_core.v_handover_overview AS
+ WITH latest_state AS (
+         SELECT DISTINCT ON (tv.artefact_id) tv.artefact_id,
+            TRIM(BOTH '"'::text FROM (tv.value)::text) AS transfer_state,
+            tv.effective_at
+           FROM (app_provenance.artefact_trait_values tv
+             JOIN app_provenance.artefact_traits t ON ((t.trait_id = tv.trait_id)))
+          WHERE (t.trait_key = 'transfer_state'::text)
+          ORDER BY tv.artefact_id, tv.effective_at DESC
+        ), ops_scopes AS (
+         SELECT ascope.artefact_id,
+            array_agg(DISTINCT sc.scope_key ORDER BY sc.scope_key) AS scope_keys
+           FROM (app_provenance.artefact_scopes ascope
+             JOIN app_security.scopes sc ON ((sc.scope_id = ascope.scope_id)))
+          WHERE (sc.scope_type = 'ops'::text)
+          GROUP BY ascope.artefact_id
+        ), research_scopes AS (
+         SELECT ascope.artefact_id,
+            array_agg(DISTINCT sc.scope_key ORDER BY sc.scope_key) AS scope_keys
+           FROM (app_provenance.artefact_scopes ascope
+             JOIN app_security.scopes sc ON ((sc.scope_id = ascope.scope_id)))
+          WHERE (sc.scope_type = ANY (ARRAY['project'::text, 'dataset'::text, 'subproject'::text]))
+          GROUP BY ascope.artefact_id
+        )
+ SELECT rel.parent_artefact_id AS research_artefact_id,
+    parent.name AS research_artefact_name,
+    research_scopes.scope_keys AS research_scope_keys,
+    rel.child_artefact_id AS ops_artefact_id,
+    child.name AS ops_artefact_name,
+    ops_scopes.scope_keys AS ops_scope_keys,
+    ls_parent.transfer_state AS research_transfer_state,
+    ls_child.transfer_state AS ops_transfer_state,
+    ( SELECT array_agg(elem.value ORDER BY elem.value) AS array_agg
+           FROM jsonb_array_elements_text(COALESCE((rel.metadata -> 'propagation_whitelist'::text), '[]'::jsonb)) elem(value)) AS propagation_whitelist,
+    ((rel.metadata ->> 'handover_at'::text))::timestamp with time zone AS handover_at,
+    ((rel.metadata ->> 'returned_at'::text))::timestamp with time zone AS returned_at,
+    ((rel.metadata ->> 'handover_by'::text))::uuid AS handover_by,
+    ((rel.metadata ->> 'returned_by'::text))::uuid AS returned_by
+   FROM ((((((app_provenance.artefact_relationships rel
+     JOIN app_provenance.artefacts parent ON ((parent.artefact_id = rel.parent_artefact_id)))
+     JOIN app_provenance.artefacts child ON ((child.artefact_id = rel.child_artefact_id)))
+     LEFT JOIN latest_state ls_parent ON ((ls_parent.artefact_id = parent.artefact_id)))
+     LEFT JOIN latest_state ls_child ON ((ls_child.artefact_id = child.artefact_id)))
+     LEFT JOIN ops_scopes ON ((ops_scopes.artefact_id = child.artefact_id)))
+     LEFT JOIN research_scopes ON ((research_scopes.artefact_id = parent.artefact_id)))
+  WHERE (rel.relationship_type = 'handover_duplicate'::text);
+
+
+--
+-- Name: VIEW v_handover_overview; Type: COMMENT; Schema: app_core; Owner: -
+--
+
+COMMENT ON VIEW app_core.v_handover_overview IS 'Summarises handover duplicates, scope memberships, transfer state, and propagation metadata for UI consumption.';
+
+
+--
 -- Name: artefact_storage_events; Type: TABLE; Schema: app_provenance; Owner: -
 --
 
@@ -1707,39 +1909,6 @@ CREATE TABLE app_provenance.artefact_types (
 );
 
 ALTER TABLE ONLY app_provenance.artefact_types FORCE ROW LEVEL SECURITY;
-
-
---
--- Name: artefacts; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefacts (
-    artefact_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    artefact_type_id uuid NOT NULL,
-    name text NOT NULL,
-    external_identifier text,
-    description text,
-    status text DEFAULT 'active'::text NOT NULL,
-    is_virtual boolean DEFAULT false NOT NULL,
-    quantity numeric,
-    quantity_unit text,
-    quantity_estimated boolean DEFAULT false NOT NULL,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    origin_process_instance_id uuid,
-    container_artefact_id uuid,
-    container_slot_id uuid,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by uuid,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_by uuid,
-    CONSTRAINT artefacts_check CHECK (((container_slot_id IS NULL) OR (container_artefact_id IS NOT NULL))),
-    CONSTRAINT artefacts_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT artefacts_name_check CHECK ((name <> ''::text)),
-    CONSTRAINT artefacts_quantity_check CHECK (((quantity IS NULL) OR (quantity >= (0)::numeric))),
-    CONSTRAINT artefacts_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'reserved'::text, 'consumed'::text, 'completed'::text, 'archived'::text, 'retired'::text])))
-);
-
-ALTER TABLE ONLY app_provenance.artefacts FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -1909,50 +2078,6 @@ CREATE VIEW app_core.v_labware_inventory AS
 
 
 --
--- Name: artefact_scopes; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_scopes (
-    artefact_id uuid NOT NULL,
-    scope_id uuid NOT NULL,
-    relationship text DEFAULT 'primary'::text NOT NULL,
-    assigned_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    assigned_by uuid,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT artefact_scopes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT artefact_scopes_relationship_check CHECK ((relationship = ANY (ARRAY['primary'::text, 'supplementary'::text, 'facility'::text, 'dataset'::text, 'derived_from'::text])))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_scopes FORCE ROW LEVEL SECURITY;
-
-
---
--- Name: scopes; Type: TABLE; Schema: app_security; Owner: -
---
-
-CREATE TABLE app_security.scopes (
-    scope_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    scope_key text NOT NULL,
-    scope_type text NOT NULL,
-    display_name text NOT NULL,
-    description text,
-    parent_scope_id uuid,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by uuid,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_by uuid,
-    CONSTRAINT scopes_check CHECK (((parent_scope_id IS NULL) OR (parent_scope_id <> scope_id))),
-    CONSTRAINT scopes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT scopes_scope_key_check CHECK ((scope_key = lower(scope_key))),
-    CONSTRAINT scopes_scope_type_check CHECK ((scope_type = lower(scope_type)))
-);
-
-ALTER TABLE ONLY app_security.scopes FORCE ROW LEVEL SECURITY;
-
-
---
 -- Name: v_project_access_overview; Type: VIEW; Schema: app_core; Owner: -
 --
 
@@ -2098,27 +2223,6 @@ CREATE VIEW app_core.v_project_access_overview AS
      LEFT JOIN project_aggregates agg ON ((agg.project_id = ap.project_id)))
      LEFT JOIN sample_counts samples ON ((samples.project_id = ap.project_id)))
      LEFT JOIN labware_counts labware ON ((labware.project_id = ap.project_id)));
-
-
---
--- Name: artefact_relationships; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_relationships (
-    relationship_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    parent_artefact_id uuid NOT NULL,
-    child_artefact_id uuid NOT NULL,
-    relationship_type text NOT NULL,
-    process_instance_id uuid,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by uuid,
-    CONSTRAINT artefact_relationships_check CHECK ((parent_artefact_id <> child_artefact_id)),
-    CONSTRAINT artefact_relationships_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT artefact_relationships_relationship_type_check CHECK ((relationship_type = lower(relationship_type)))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_relationships FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -2435,51 +2539,6 @@ CREATE VIEW app_core.v_transaction_context_activity AS
     context_count,
     open_contexts
    FROM app_security.v_transaction_context_activity;
-
-
---
--- Name: artefact_trait_values; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_trait_values (
-    artefact_trait_value_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    artefact_id uuid NOT NULL,
-    trait_id uuid NOT NULL,
-    value jsonb NOT NULL,
-    effective_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    recorded_by uuid,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT artefact_trait_values_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_trait_values FORCE ROW LEVEL SECURITY;
-
-
---
--- Name: artefact_traits; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_traits (
-    trait_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    trait_key text NOT NULL,
-    display_name text NOT NULL,
-    description text,
-    data_type text NOT NULL,
-    allowed_values jsonb,
-    default_value jsonb,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by uuid,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_by uuid,
-    CONSTRAINT artefact_traits_allowed_values_check CHECK (((allowed_values IS NULL) OR (jsonb_typeof(allowed_values) = ANY (ARRAY['array'::text, 'object'::text])))),
-    CONSTRAINT artefact_traits_data_type_check CHECK ((data_type = ANY (ARRAY['boolean'::text, 'text'::text, 'integer'::text, 'numeric'::text, 'json'::text, 'enum'::text]))),
-    CONSTRAINT artefact_traits_default_value_check CHECK (((default_value IS NULL) OR (jsonb_typeof(default_value) = ANY (ARRAY['object'::text, 'array'::text, 'string'::text, 'number'::text, 'boolean'::text, 'null'::text])))),
-    CONSTRAINT artefact_traits_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT artefact_traits_trait_key_check CHECK ((trait_key = lower(trait_key)))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_traits FORCE ROW LEVEL SECURITY;
 
 
 --
@@ -4586,4 +4645,7 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20251010013500'),
     ('20251010014000'),
     ('20251010014500'),
-    ('20251010015000');
+    ('20251010015000'),
+    ('20251010015100'),
+    ('20251010015200'),
+    ('20251010015300');
