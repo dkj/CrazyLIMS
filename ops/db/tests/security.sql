@@ -926,4 +926,219 @@ BEGIN
 END;
 $$;
 
+
+SET ROLE app_admin;
+
+DO $$
+DECLARE
+  v_admin uuid;
+  v_source uuid := current_setting('session.handover_source', true)::uuid;
+  v_research_scope uuid := current_setting('session.handover_research_scope', true)::uuid;
+  v_collab_scope uuid;
+  v_duplicate uuid;
+BEGIN
+  SELECT id INTO v_admin FROM app_core.users WHERE email = 'admin@example.org';
+  IF v_admin IS NULL THEN
+    RAISE EXCEPTION 'Admin seed user missing for generalised handover tests';
+  END IF;
+
+  IF v_source IS NULL THEN
+    SELECT artefact_id INTO v_source
+      FROM app_provenance.artefacts
+     WHERE external_identifier = 'SAMPLE-GP-001-A';
+  END IF;
+  IF v_source IS NULL THEN
+    RAISE EXCEPTION 'Generalised handover source artefact missing';
+  END IF;
+
+  IF v_research_scope IS NULL THEN
+    SELECT scope_id INTO v_research_scope
+      FROM app_security.scopes
+     WHERE scope_key = 'dataset:pilot_plasma';
+  END IF;
+  IF v_research_scope IS NULL THEN
+    RAISE EXCEPTION 'Research scope missing for generalised handover tests';
+  END IF;
+
+  v_collab_scope := app_provenance.sp_transfer_between_scopes(
+    p_source_scope_id      => v_research_scope,
+    p_target_scope_key     => 'project:pilot-collab',
+    p_target_scope_type    => 'project',
+    p_artefact_ids         => ARRAY[v_source],
+    p_field_whitelist      => ARRAY['well_volume_ul'],
+    p_allowed_roles        => ARRAY['app_researcher'],
+    p_relationship_metadata => jsonb_build_object('test_case', 'generalised-collab')
+  );
+
+  IF v_collab_scope IS NULL THEN
+    RAISE EXCEPTION 'sp_transfer_between_scopes did not return collab scope id';
+  END IF;
+
+  SELECT child_artefact_id
+    INTO v_duplicate
+    FROM app_provenance.artefact_relationships rel
+   WHERE rel.parent_artefact_id = v_source
+     AND rel.relationship_type = 'handover_duplicate'
+   ORDER BY rel.created_at DESC
+   LIMIT 1;
+
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Generalised handover duplicate not created';
+  END IF;
+
+  PERFORM set_config('session.collab_scope', v_collab_scope::text, false);
+  PERFORM set_config('session.collab_duplicate', v_duplicate::text, false);
+
+  INSERT INTO app_security.scope_memberships (scope_id, user_id, role_name, granted_by, metadata)
+  VALUES (
+    v_collab_scope,
+    (SELECT id FROM app_core.users WHERE email = 'alice@example.org'),
+    'app_researcher',
+    v_admin,
+    jsonb_build_object('test', 'generalised')
+  )
+  ON CONFLICT (scope_id, user_id, role_name) DO NOTHING;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_researcher uuid := current_setting('session.researcher_id', true)::uuid;
+  v_duplicate uuid := current_setting('session.collab_duplicate', true)::uuid;
+  v_roles text[];
+  v_allowed boolean;
+  v_view record;
+BEGIN
+  IF v_researcher IS NULL THEN
+    SELECT id INTO v_researcher FROM app_core.users WHERE email = 'alice@example.org';
+  END IF;
+  IF v_researcher IS NULL THEN
+    RAISE EXCEPTION 'Researcher session id missing for generalised handover tests';
+  END IF;
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Collaborative duplicate id missing for researcher test';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_researcher::text, true);
+  PERFORM set_config('app.actor_identity', 'alice@example.org', true);
+  PERFORM set_config('app.roles', 'app_researcher', true);
+
+  v_roles := app_provenance.transfer_allowed_roles(v_duplicate);
+  IF array_length(v_roles, 1) IS DISTINCT FROM 1 OR v_roles[1] <> 'app_researcher' THEN
+    RAISE EXCEPTION 'Expected transfer_allowed_roles to return app_researcher, saw %', v_roles;
+  END IF;
+
+  SELECT app_provenance.can_update_handover_metadata(v_duplicate)
+    INTO v_allowed;
+  IF NOT COALESCE(v_allowed, false) THEN
+    RAISE EXCEPTION 'Researcher should be permitted to update collaborative duplicate metadata';
+  END IF;
+
+  SELECT allowed_roles, relationship_type
+    INTO v_view
+    FROM app_core.v_scope_transfer_overview
+   WHERE target_artefact_id = v_duplicate;
+
+  IF v_view.relationship_type IS DISTINCT FROM 'handover_duplicate' THEN
+    RAISE EXCEPTION 'Unexpected relationship_type %, expected handover_duplicate', v_view.relationship_type;
+  END IF;
+  IF NOT (v_view.allowed_roles @> ARRAY['app_researcher']) THEN
+    RAISE EXCEPTION 'v_scope_transfer_overview missing expected allowed role set';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_operator;
+
+DO $$
+DECLARE
+  v_operator uuid := current_setting('session.operator_id', true)::uuid;
+  v_duplicate uuid := current_setting('session.collab_duplicate', true)::uuid;
+BEGIN
+  IF v_operator IS NULL THEN
+    SELECT id INTO v_operator FROM app_core.users WHERE email = 'ops@example.org';
+  END IF;
+  IF v_duplicate IS NULL THEN
+    RAISE EXCEPTION 'Collaborative duplicate id missing for operator check';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_operator::text, true);
+  PERFORM set_config('app.actor_identity', 'ops@example.org', true);
+  PERFORM set_config('app.roles', 'app_operator', true);
+
+  IF app_provenance.can_update_handover_metadata(v_duplicate) THEN
+    RAISE EXCEPTION 'Operator should not update collaborative duplicate metadata';
+  END IF;
+END;
+$$;
+
+RESET ROLE;
+
+SET ROLE app_researcher;
+
+DO $$
+DECLARE
+  v_researcher uuid := current_setting('session.researcher_id', true)::uuid;
+  v_duplicate uuid := current_setting('session.collab_duplicate', true)::uuid;
+  v_collab_scope uuid := current_setting('session.collab_scope', true)::uuid;
+  v_return_scope uuid := current_setting('session.handover_research_scope', true)::uuid;
+  v_state text;
+BEGIN
+  IF v_researcher IS NULL THEN
+    SELECT id INTO v_researcher FROM app_core.users WHERE email = 'alice@example.org';
+  END IF;
+  IF v_researcher IS NULL THEN
+    RAISE EXCEPTION 'Researcher context missing for completion test';
+  END IF;
+  IF v_duplicate IS NULL OR v_collab_scope IS NULL THEN
+    RAISE EXCEPTION 'Collaborative context missing for completion test';
+  END IF;
+  IF v_return_scope IS NULL THEN
+    RAISE EXCEPTION 'Research scope missing for completion test';
+  END IF;
+
+  PERFORM set_config('app.actor_id', v_researcher::text, true);
+  PERFORM set_config('app.actor_identity', 'alice@example.org', true);
+  PERFORM set_config('app.roles', 'app_researcher', true);
+
+  PERFORM app_provenance.sp_complete_transfer(
+    p_target_artefact_id => v_duplicate,
+    p_return_scope_ids   => ARRAY[v_return_scope]
+  );
+
+  IF NOT EXISTS (
+        SELECT 1
+        FROM app_provenance.artefact_scopes
+       WHERE artefact_id = v_duplicate
+         AND scope_id = v_return_scope
+         AND relationship = 'derived_from'
+     ) THEN
+    RAISE EXCEPTION 'Collaborative duplicate missing research derived_from scope after completion';
+  END IF;
+
+  SELECT trim(both '"' FROM tv.value::text)
+    INTO v_state
+    FROM app_provenance.artefact_trait_values tv
+    JOIN app_provenance.artefact_traits t ON t.trait_id = tv.trait_id
+   WHERE tv.artefact_id = v_duplicate
+     AND t.trait_key = 'transfer_state'
+   ORDER BY tv.effective_at DESC
+   LIMIT 1;
+
+  IF v_state <> 'returned' THEN
+    RAISE EXCEPTION 'Collaborative duplicate transfer_state expected returned, saw %', v_state;
+  END IF;
+
+  IF app_provenance.can_update_handover_metadata(v_duplicate) THEN
+    RAISE EXCEPTION 'Researcher should not update metadata once collaborative handover is complete';
+  END IF;
+END;
+$$;
+
 RESET ROLE;

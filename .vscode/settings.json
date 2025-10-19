@@ -11,5 +11,17 @@
             "username": "dev",
             "password": "devpass"
         }
+    ],
+    "cSpell.words": [
+        "artefacts",
+        "authorisation",
+        "barcodes",
+        "deplexing",
+        "finalises",
+        "flowcell",
+        "formalised",
+        "generalise",
+        "generalised",
+        "LIMS"
     ]
 }

@@ -160,3 +160,19 @@ export interface HandoverOverviewRow {
   handover_by: string | null;
   returned_by: string | null;
 }
+
+export interface ScopeTransferOverviewRow {
+  source_artefact_id: string;
+  source_artefact_name: string | null;
+  target_artefact_id: string;
+  target_artefact_name: string | null;
+  relationship_type: string;
+  source_transfer_state: string | null;
+  target_transfer_state: string | null;
+  propagation_whitelist: string[] | null;
+  allowed_roles: string[] | null;
+  handover_at: string | null;
+  returned_at: string | null;
+  handover_by: string | null;
+  returned_by: string | null;
+}

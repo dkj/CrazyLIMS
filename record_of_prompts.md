@@ -11,7 +11,7 @@ We need to look more generally for patterns to simplify the current schema yet m
 Consider donor-level, samples, reagents, data-products - all should be part of the same provenance graph.
 Samples' relationship to labware is similar to reagents to inventory. 
 Both samples and reagents may have recommended treatment/storage recommendations and expected/recommended lifetimes.
-Both may need to have their labware/inventory tracked including their storage locations, and chain of custody histroy. Data products have, potentially mulitple, data storage locations.
+Both may need to have their labware/inventory tracked including their storage locations, and chain of custody history. Data products have, potentially mulitple, data storage locations.
 
 Starting with the concept of sample is that it is broadly something of fairly fixed nature. Processing it in some way creates another sample. Different samples can be produced from one sample e.g. splitting a DNA sample into smaller and larger fragment sizes. A sample can be produced from mulitple samples e.g. pooled sequencing library from indexed sequencing libraries. So..., aliquots (a subset of the sample where the samples nature is that splitting it produces separation of the same "thing") are best represented as the same "sample" in different labware. Some samples, e.g. whole insects, are atomic in nature i.e. you cannot take some  fraction of it without changing its nature. Other samples can be devided yet retains their nature as the same sample e.g. blood.
 
@@ -20,7 +20,7 @@ So, some samples may not have a container, certainly a donor especially a human 
 Then also consider donor-level, samples, reagents, data-products - all should be part of the same provenance graph.
 Samples' relationship to labware is similar to reagents to inventory. 
 Both samples and reagents may have recommended treatment/storage recommendations and expected/recommended lifetimes.
-Both may need to have their labware/inventory tracked including their storage locations, and chain of custody histroy. Data products have, potentially mulitple, data storage locations.
+Both may need to have their labware/inventory tracked including their storage locations, and chain of custody history. Data products have, potentially mulitple, data storage locations.
 
 The connections in the provenance graphs will need to (optionally) connect to the processes which may come from an ELN or more formalised workflow.
 
@@ -59,9 +59,9 @@ Given the phase 1 redux and phase 2 redux plans, should we start the project aga
 
 There is no production system yet, so there is no real operational data, only data we've created for testing the system. I am concerned about vestigal elements of the early design adversly affecting the new one we've created given our earlier experience
 
-### latent/multiplexed connections in provenence graph
+### latent/multiplexed connections in provenance graph
 
-In some circumstances where mulitple samples e.g. "indexed libaries" are merged say to a single sample e.g. "pooled library", then processed to produce multiple data products, those should each be connected back to particular indexed library samples i.e. the intermediate squashing of mulitple samples to one is actually "mulitplexing" the provenance and that is de-multiplexed when creating the data products.
+In some circumstances where multiple samples e.g. "indexed libraries" are merged say to a single sample e.g. "pooled library", then processed to produce multiple data products, those should each be connected back to particular indexed library samples i.e. the intermediate squashing of multiple samples to one is actually "multiplexing" the provenance and that is de-multiplexed when creating the data products.
 
 How can we represent that in the provenance graph/structures?
 
@@ -69,11 +69,11 @@ How can we represent that in the provenance graph/structures?
 
 Note the tag sequence really is a property of the "indexed library" sample.
 
-We can consider other variants on these "latent" direct links e.g. single cell data pooled from multiple donors for cost efficiency reasons and a later informtics process teases apart the data by genotyping the reads normally just used for expression, perhaps using genotyping info from an external source for the donors, or from a parallel exome workflow.
+We can consider other variants on these "latent" direct links e.g. single cell data pooled from multiple donors for cost efficiency reasons and a later informatics process teases apart the data by genotyping the reads normally just used for expression, perhaps using genotyping info from an external source for the donors, or from a parallel exome workflow.
 
 ####
 
-these addtions sound too specific - the ability to map downstream nodes to matching (via some process specific means) to upstream nodes, where the intermediate lab process squash the numbers down to fewer or one intermediate sample (like a pool).
+these additions sound too specific - the ability to map downstream nodes to matching (via some process specific means) to upstream nodes, where the intermediate lab process squash the numbers down to fewer or one intermediate sample (like a pool).
 
 
 ### test with DNA normalisation
@@ -131,7 +131,7 @@ For  a study, there may be  people who only enter/write virtual entities, and ot
 
 There may also be situations where a study has a set of people (research team) who are able to see all the virtual entity information and samples associated with them, but the lab processing is done by another set of people (production service lab) who should not be able to see the upstream  virtual entity, but who need to create/write the processes and samples/entities created downstream. The research team should be able to read all of the information for samples downstream of theirs (but not write in the places the service lab work).
 
-Instruments and their automations will only be able read and update the samples/entities and processes local to their part of the provenence structure.
+Instruments and their automations will only be able read and update the samples/entities and processes local to their part of the provenance structure.
 
 What options do we have for access control?
 
@@ -139,14 +139,14 @@ What options do we have for access control?
 
 We need to consider handover between teams/groups of people more explicitly I think. Also, the observability  and confidentiality though a multiplexing process in an operations lab for multiple research labs.
 
-Let's consider two research studies (with differnt teams of people) and an operations lab.
+Let's consider two research studies (with different teams of people) and an operations lab.
 
 Research lab working on project Alpha:
 - Roberto (non lab researcher) registers samples (virtual entities) with project "alpha", donor id, donor age, region collected and donor gender for some blood samples
 - Phillipa (researcher) received a plate "P202" with a manifest listing plate positions and donor ids for project "alpha", registers in LIMS linking with the prior "ancestor virtual samples"
 - Phillipa processes plate to DNA fragmented to 400bp size in plate "D203"
-- Ross (lab assistent) processes plate "D203" to indexed sequencing libraries in plate "L204" where the samples here are annotated with the i5 and i7 sequence tags
-- Ross delivers plate "L203" to operations lab  (so in the LIMS, perhaps generating a new version of the plate in LIMS owned by operations where ids and key data like expected fragment size and sequence tags are visible, leaving a copy with "transfered" states owned by the research lab )
+- Ross (lab assistant) processes plate "D203" to indexed sequencing libraries in plate "L204" where the samples here are annotated with the i5 and i7 sequence tags
+- Ross delivers plate "L203" to operations lab  (so in the LIMS, perhaps generating a new version of the plate in LIMS owned by operations where ids and key data like expected fragment size and sequence tags are visible, leaving a copy with "transferred" states owned by the research lab )
 
 Second research lab working project Beta:
 - Eric (non lab researcher) registers samples (virtual entities) with project "alpha", tube barcodes, donor id, donor age, region collected and donor gender for some blood samples
@@ -158,15 +158,15 @@ Operations Lab
 - Fred pools N203, N401, N402 and N403 to library pool in tube LT5
 - Fred  loads sequencing instrument with LT5 and appropriate manifest (created from ancestor tag sequence information)
 - sequencing instrument output is processed by manifest to produce 366 data products which are linked, as well as back to LT5 via sequencing process but to upstream to wells in normalised indexed sequencing library plates  N203, N401, N402 and N403
-- data product references in LIMS are copied/marked as transfered back to research labs
+- data product references in LIMS are copied/marked as transferred back to research labs
 
 Required Visibility:
 - the lab staff should be able to see all info on samples received in their lab, but not upstream info done in the research labs, nor downstream done after artefacts are  handed back to the research labs.
-- the research labs should be able to see all info on artefects in their studies, the artefacts in the operations lab derived from theirs and the associated processes, but not the data corresponding to the other lab's research project even if it is the same  library pool used for sequencing.
+- the research labs should be able to see all info on artefacts in their studies, the artefacts in the operations lab derived from theirs and the associated processes, but not the data corresponding to the other lab's research project even if it is the same  library pool used for sequencing.
 
 ##### 
 
-Re 1 - duplication of entities with minimal appropriate transfer of metadata is okay, so long there is a mechanism for propagating corrections. there should still be a chain of providence from "transferred" state originating lab artefects to downstream duplicate artefacts.
+Re 1 - duplication of entities with minimal appropriate transfer of metadata is okay, so long there is a mechanism for propagating corrections. there should still be a chain of providence from "transferred" state originating lab artefacts to downstream duplicate artefacts.
 
 Re 2 - if duplication with minimal appropriate metadata is done then this it moot, no?
 
@@ -188,6 +188,11 @@ This should include
 ##### execute plan
 
 As an expert software developer who favours clarity through minimal architecture and reusing existing patterns in their solutions, review the security-access-control-plan-phase1-and-2-security-redux.md plan with a view to starting to implement it. Keep changes as small as possible (e.g. exploit existing provenance graph capability rather than adding new tables). Favour test driven development where pragmatic. Ensure good explanatory code  and test documentation, good test coverage, and that the tests pass, so that the reviewer's task is straightforward.
+
+
+### studies/groups and operational lab
+
+As an expert software developer who favours clarity through minimal architecture and reusing existing patterns in their solutions, review the use of studies/research-projects (especially as used in access control evaluation as linking people and samples/artefacts ), the operational lab functionality (where a study/project may handover samples/artefacts for processing to that lab to then have the outputs samples/data products returned to the study/research project later), and how there may in fact be multiple operational labs (whose data access should be separate), or research teams which can help out on part of another research team's work but not see all of the study concerned. Can we generalise research studies and operational labs together with generalising the handover processes/methods/utilities (with the ability to keep current data access guarantees)? We should be able to simplify our data model (hopefully seeing the schema size shrink slightly) whilst achieving more capability. Create comprehensive and documented tests for the generalised functionality as well as implementing it.
 
 ### Later
 

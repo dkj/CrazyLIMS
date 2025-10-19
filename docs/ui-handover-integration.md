@@ -6,27 +6,32 @@ This guide captures the database entry points the web UI can rely on when presen
 
 | Procedure | Purpose | Typical Caller |
 |-----------|---------|----------------|
-| `app_provenance.sp_handover_to_ops(research_scope_id uuid, ops_scope_key text, artefact_ids uuid[], field_whitelist text[])` | Creates ops-scope duplicates linked to the supplied research artefacts. Stores a per-handover whitelist for downstream propagation and stamps `transfer_state` traits. | Research lab operators or API workflow controller. |
-| `app_provenance.sp_return_from_ops(ops_artefact_id uuid, research_scope_ids uuid[])` | Marks an ops artefact as returned, adds back scope visibility, and completes the transfer-state lifecycle. | Ops lab techs / automation once deliverables are reconciled. |
+| `app_provenance.sp_transfer_between_scopes(...)` | Generalised handover utility that duplicates artefacts into another scope, records allowed roles, stores whitelists, and stamps transfer state. | Study owners delegating work, partner labs, automation controllers. |
+| `app_provenance.sp_complete_transfer(...)` | Completes an in-flight transfer, adds derived scope visibility, and finalises `transfer_state` metadata. | Teams returning results to the origin scope or closing delegated work. |
+| `app_provenance.sp_handover_to_ops(...)` | Compatibility wrapper around `sp_transfer_between_scopes` that targets legacy ops scopes and defaults ops personas. | Research lab operators or API workflow controller. |
+| `app_provenance.sp_return_from_ops(...)` | Wrapper around `sp_complete_transfer` preserving the historic ops-return flow. | Ops lab techs / automation once deliverables are reconciled. |
 
-Both procedures rely on the existing scope framework (`app_security.actor_has_scope`) for authorisation. The UI should call them via PostGraphile/PostgREST mutations exposed by the backend.
+All procedures rely on the scope framework (`app_security.actor_has_scope`) for authorisation. Prefer calling the generalised helpers via PostGraphile/PostgREST; the wrappers remain for legacy integrations.
 
 ## Helper View for UI
 
-`app_core.v_handover_overview` aggregates the data the UI typically needs:
+`app_core.v_scope_transfer_overview` aggregates every scope-to-scope handover (research⇄ops, research⇄research, facility⇄facility, etc.) and exposes rich metadata for UI consumers:
 
 | Column | Description |
 |--------|-------------|
-| `research_artefact_id`, `research_artefact_name` | Original artefact handed off. |
-| `research_scope_keys` | Project/dataset scopes associated with the research artefact. |
-| `ops_artefact_id`, `ops_artefact_name` | Duplicate living in the ops scope. |
-| `ops_scope_keys` | Ops scopes the duplicate currently belongs to. |
-| `research_transfer_state`, `ops_transfer_state` | Latest transfer-state trait on both artefacts. |
-| `propagation_whitelist` | JSON → array of metadata keys the ops duplicate can receive from research corrections. |
-| `handover_at`, `handover_by` | Timestamp and user UUID responsible for the handover. |
-| `returned_at`, `returned_by` | Timestamp and user UUID that completed the return. |
+| `source_artefact_id`, `source_artefact_name` | Artefact handed off from the originating scope. |
+| `source_scopes` | JSON array describing each scope attached to the source artefact (id, key, type, relationship). |
+| `target_artefact_id`, `target_artefact_name` | Duplicate that lives inside the target scope. |
+| `target_scopes` | JSON array of the duplicate's scope memberships. |
+| `source_transfer_state`, `target_transfer_state` | Latest transfer-state trait values on each artefact. |
+| `propagation_whitelist` | Whitelisted metadata keys that propagate from source to target after corrections. |
+| `allowed_roles` | Roles permitted to mutate the duplicate via `app_provenance.can_update_handover_metadata`. |
+| `relationship_type`, `relationship_metadata` | Underlying relationship type plus raw metadata (notes, additional audit breadcrumbs). |
+| `handover_at`, `handover_by`, `returned_at`, `returned_by` | Lifecycle audit fields. |
 
-Row-level security flows through the underlying tables: users only see handovers involving scopes they belong to.
+For compatibility the narrower `app_core.v_handover_overview` now selects a filtered subset of `v_scope_transfer_overview` where the target scope type is `ops`, exposing the familiar research/ops columns listed below.
+
+Row-level security flows through the underlying tables: users only see transfers involving scopes they belong to, regardless of which view they query.
 
 ### Typical Queries
 
@@ -49,16 +54,16 @@ Row-level security flows through the underlying tables: users only see handovers
 
 ## Transfer-State Lifecycle
 
-1. Research creates materials and invokes `sp_handover_to_ops`.  
-2. Ops processes operate solely on the duplicate within their scopes.  
+1. Research (or the originating team) calls `sp_transfer_between_scopes` to hand artefacts to another scope (the `sp_handover_to_ops` wrapper still works for ops-focused flows).  
+2. The target team operates solely on the duplicate within its scopes.  
 3. Research corrections propagate automatically for whitelisted fields.  
-4. Ops calls `sp_return_from_ops` to indicate the deliverable is back with research.  
+4. The target team calls `sp_complete_transfer` (or `sp_return_from_ops`) to signal the deliverable has been returned.  
 
 The UI can surface this lifecycle by mapping `research_transfer_state` and `ops_transfer_state` to status badges, combining timestamps from the view.
 
 ## Propagation Whitelist UX
 
-When calling `sp_handover_to_ops`, the payload’s `field_whitelist` controls which metadata keys may flow from research to ops after corrections. The UI should:
+When calling `sp_transfer_between_scopes` (or the `sp_handover_to_ops` wrapper), the payload’s `field_whitelist` controls which metadata keys may flow from the source scope after corrections. The UI should:
 
 - Display the whitelist (`propagation_whitelist`) for each handover.  
 - Offer a controlled editor (e.g. multi-select) to append allowable keys before the handover is initiated.  
@@ -74,13 +79,48 @@ Leverage the view and trait data when rendering provenance graphs:
 - **Timeline filters:** use `handover_at` / `returned_at` to filter the graph (e.g. “show handovers from the last 7 days” or “pending returns”).  
 - **Access hints:** if the UI detects truncated traversals (no more descendants but the user expects outputs), surface an informative banner reminding them that RLS hides artefacts outside their scopes.
 
-All of these rely on `app_core.v_handover_overview` and the existing provenance graph data—no extra queries are required beyond joining the view to the graph datasource.
+All of these rely on `app_core.v_scope_transfer_overview` (or the narrower `app_core.v_handover_overview`) alongside the existing provenance graph data—no extra queries are required beyond joining the view to the graph datasource.
 
 ## API Usage Patterns
 
 ### PostGraphile (GraphQL)
 
-Call stored procedures via mutations:
+Call stored procedures via mutations. Prefer the general helpers when introducing new flows:
+
+```graphql
+mutation TransferBetweenScopes($sourceScopeId: UUID!, $targetKey: String!, $targetType: String!, $artefactIds: [UUID!]!, $allowedRoles: [String!]) {
+  callAppProvenanceSpTransferBetweenScopes(
+    input: {
+      pSourceScopeId: $sourceScopeId
+      pTargetScopeKey: $targetKey
+      pTargetScopeType: $targetType
+      pArtefactIds: $artefactIds
+      pAllowedRoles: $allowedRoles
+      pFieldWhitelist: ["well_volume_ul"]
+    }
+  ) {
+    clientMutationId
+    result
+  }
+}
+```
+
+To mark a transfer complete:
+
+```graphql
+mutation CompleteTransfer($targetArtefact: UUID!, $returnScopes: [UUID!]) {
+  callAppProvenanceSpCompleteTransfer(
+    input: {
+      pTargetArtefactId: $targetArtefact
+      pReturnScopeIds: $returnScopes
+    }
+  ) {
+    clientMutationId
+  }
+}
+```
+
+Wrappers remain available for legacy ops flows:
 
 ```graphql
 mutation HandoverToOps($scopeId: UUID!, $opsKey: String!, $artefactIds: [UUID!]!, $whitelist: [String!]) {
@@ -97,8 +137,6 @@ mutation HandoverToOps($scopeId: UUID!, $opsKey: String!, $artefactIds: [UUID!]!
   }
 }
 ```
-
-For returns:
 
 ```graphql
 mutation ReturnFromOps($opsArtefact: UUID!, $researchScopes: [UUID!]!) {
@@ -134,27 +172,36 @@ query VisibleHandovers {
 
 Assuming PostgREST exposes RPC endpoints:
 
-- Trigger handover:
+- Trigger a general handover:
   ```http
-  POST /rpc/sp_handover_to_ops
+  POST /rpc/sp_transfer_between_scopes
   {
-    "p_research_scope_id": "...",
-    "p_ops_scope_key": "ops:normalisation:2024-07-15",
+    "p_source_scope_id": "...",
+    "p_target_scope_key": "project:pilot-collab",
+    "p_target_scope_type": "project",
     "p_artefact_ids": ["..."],
-    "p_field_whitelist": ["well_volume_ul","index_set"]
+    "p_field_whitelist": ["well_volume_ul"],
+    "p_allowed_roles": ["app_researcher"]
   }
   ```
 
-- Mark return:
+- Mark the transfer complete:
   ```http
-  POST /rpc/sp_return_from_ops
+  POST /rpc/sp_complete_transfer
   {
-    "p_ops_artefact_id": "...",
-    "p_research_scope_ids": ["..."]
+    "p_target_artefact_id": "...",
+    "p_return_scope_ids": ["..."]
   }
   ```
 
-- Read the overview view with standard filters:
+Wrappers remain for legacy ops flows (`sp_handover_to_ops`, `sp_return_from_ops`).
+
+- Read the general overview with standard filters:
+  ```http
+  GET /v_scope_transfer_overview?relationship_type=eq.handover_duplicate&order=handover_at.desc
+  ```
+
+- Existing UI components can continue to query the narrower view:
   ```http
   GET /v_handover_overview?ops_transfer_state=eq.transferred&order=handover_at.desc
   ```
