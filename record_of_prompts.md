@@ -194,6 +194,12 @@ As an expert software developer who favours clarity through minimal architecture
 
 As an expert software developer who favours clarity through minimal architecture and reusing existing patterns in their solutions, review the use of studies/research-projects (especially as used in access control evaluation as linking people and samples/artefacts ), the operational lab functionality (where a study/project may handover samples/artefacts for processing to that lab to then have the outputs samples/data products returned to the study/research project later), and how there may in fact be multiple operational labs (whose data access should be separate), or research teams which can help out on part of another research team's work but not see all of the study concerned. Can we generalise research studies and operational labs together with generalising the handover processes/methods/utilities (with the ability to keep current data access guarantees)? We should be able to simplify our data model (hopefully seeing the schema size shrink slightly) whilst achieving more capability. Create comprehensive and documented tests for the generalised functionality as well as implementing it.
 
+
+
+### REST API testing
+
+You are an expert developer who creates code and tests that others find easy to understand. We need to more fully test the Rest API functionality. Consider the "User Stories" of section 2 in the "security-access-control-plan-phase1-and-phase2-security-redux.md" file: we will repeat those stories but with two new different research projects, a new separate ops lab, and new input artefacts and new associated downstream artefacts, but which broadly mirror those created directly n the DB for earlier test.  So, first in the testing the admin user should  be used with the rest API to create the new studies and users with appropriate scopes/permissions. Then new JWTs created for those users as required, and the appropriate user uses the rest API to  represent the actions outlined in these user stories. Again we should check what we intended to be created has been. That things can be seen by users we expect to see them, and not seem by other users.
+
 ### Later
 
 

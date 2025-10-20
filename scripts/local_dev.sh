@@ -272,7 +272,7 @@ postgrest_running() {
 write_postgrest_config() {
   cat >"${POSTGREST_CONFIG}" <<CFG
 db-uri = "postgres://postgrest_authenticator:postgrestpass@${PGHOST}:${PG_PORT}/lims"
-db-schemas = "app_core,app_security,public"
+db-schemas = "app_core,app_security,app_provenance,public"
 db-anon-role = "web_anon"
 db-pre-request = "app_security.pre_request"
 jwt-secret = "${JWT_SECRET}"

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security db/test
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story db/test
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -66,6 +66,7 @@ POSTGRAPHILE_GRAPHQL_URL = http://$(POSTGRAPHILE_HOST):$(POSTGRAPHILE_PORT)/grap
 JWT_DIR := ops/examples/jwts
 JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
 RBAC_TEST_SCRIPT := scripts/test_rbac.sh
+REST_STORY_TEST_SCRIPT := scripts/test_rest_story.sh
 JWT_PUBLIC_DIR := ui/public/tokens
 
 ifeq ($(PGHOST),db)
@@ -178,6 +179,7 @@ ci:
 	$(MAKE) db/test
 	$(MAKE) contracts/export
 	$(MAKE) test/security
+	$(MAKE) test/rest-story
 else
 ci:
 	$(LOCAL_DEV_HELPER) reset >/dev/null 2>&1
@@ -190,6 +192,7 @@ ci:
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) contracts/export
 	$(MAKE) test/security
+	$(MAKE) test/rest-story
 endif
 
 jwt/dev:
@@ -219,6 +222,24 @@ test/security:
 	DB_HOST=$(DB_HOST) DB_PORT=$(DB_PORT) \
 	DB_APP_USER=$(DB_APP_USER) DB_APP_PASSWORD=$(DB_APP_PASSWORD) DB_NAME=$(DB_NAME) \
 	$(RBAC_TEST_SCRIPT)
+endif
+
+ifeq ($(USE_DOCKER),yes)
+test/rest-story:
+	docker compose up -d db postgrest >/dev/null
+	$(MAKE) db-wait >/dev/null
+	$(MAKE) jwt/dev >/dev/null
+	PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) \
+	POSTGREST_URL=$(POSTGREST_BASE_URL) \
+	$(REST_STORY_TEST_SCRIPT)
+else
+test/rest-story:
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
+	$(MAKE) jwt/dev >/dev/null
+	PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) \
+	POSTGREST_URL=$(POSTGREST_BASE_URL) \
+	$(REST_STORY_TEST_SCRIPT)
 endif
 
 db/test:
