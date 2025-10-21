@@ -279,6 +279,7 @@ jwt-secret = "${JWT_SECRET}"
 openapi-server-proxy-uri = "http://127.0.0.1:${POSTGREST_PORT}"
 server-host = "127.0.0.1"
 server-port = ${POSTGREST_PORT}
+openapi-mode = "ignore-privileges"
 CFG
 }
 

@@ -68,6 +68,7 @@ JWT_DEV_SCRIPT := $(JWT_DIR)/make-dev-jwts.sh
 RBAC_TEST_SCRIPT := scripts/test_rbac.sh
 REST_STORY_TEST_SCRIPT := scripts/test_rest_story.sh
 JWT_PUBLIC_DIR := ui/public/tokens
+POSTGREST_CONTRACT_JWT ?= $(JWT_DIR)/admin.jwt
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -155,8 +156,14 @@ psql:
 ifeq ($(USE_DOCKER),yes)
 contracts/export:
 	docker compose up -d db postgrest postgraphile
+	$(MAKE) db-wait >/dev/null
 	mkdir -p $(POSTGREST_CONTRACT_DIR) $(POSTGRAPHILE_CONTRACT_DIR)
-	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Accept: application/openapi+json" $(POSTGREST_BASE_URL)/ | jq . > $(POSTGREST_OPENAPI)
+	@if [ ! -f "$(POSTGREST_CONTRACT_JWT)" ]; then \
+	        echo "Missing PostgREST contract JWT: $(POSTGREST_CONTRACT_JWT)" >&2; \
+	        exit 1; \
+	fi
+	@./scripts/export_postgrest_openapi.sh "$(POSTGREST_BASE_URL)" "$(POSTGREST_CONTRACT_JWT)" "$(POSTGREST_OPENAPI)"
+	$(MAKE) db-wait >/dev/null
 	jq -n --rawfile query $(INTROSPECTION_QUERY_FILE) '{"query": $$query}' > $(INTROSPECTION_PAYLOAD)
 	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Content-Type: application/json" --data-binary @$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL) | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
 	rm -f $(INTROSPECTION_PAYLOAD)
@@ -164,8 +171,14 @@ contracts/export:
 else
 contracts/export:
 	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
 	mkdir -p $(POSTGREST_CONTRACT_DIR) $(POSTGRAPHILE_CONTRACT_DIR)
-	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Accept: application/openapi+json" $(POSTGREST_BASE_URL)/ | jq . > $(POSTGREST_OPENAPI)
+	@if [ ! -f "$(POSTGREST_CONTRACT_JWT)" ]; then \
+	        echo "Missing PostgREST contract JWT: $(POSTGREST_CONTRACT_JWT)" >&2; \
+	        exit 1; \
+	fi
+	@./scripts/export_postgrest_openapi.sh "$(POSTGREST_BASE_URL)" "$(POSTGREST_CONTRACT_JWT)" "$(POSTGREST_OPENAPI)"
+	$(MAKE) db-wait >/dev/null
 	jq -n --rawfile query $(INTROSPECTION_QUERY_FILE) '{"query": $$query}' > $(INTROSPECTION_PAYLOAD)
 	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Content-Type: application/json" --data-binary @$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL) | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
 	rm -f $(INTROSPECTION_PAYLOAD)
