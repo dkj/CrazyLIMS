@@ -386,6 +386,100 @@ section h2 {
   gap: 0.75rem;
 }
 
+.provenance__controls--search {
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.provenance__search {
+  position: relative;
+  min-width: min(420px, 100%);
+}
+
+.provenance__distance {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.provenance__distance label {
+  font-weight: 600;
+  color: #475569;
+}
+
+.provenance__distance input[type="number"] {
+  width: 80px;
+  padding: 0.35rem 0.4rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5f5;
+  font-size: 0.9rem;
+}
+
+.provenance__search input[type="search"] {
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5f5;
+  font-size: 0.95rem;
+  background: white;
+}
+
+.provenance__search input[type="search"]:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-color: #2563eb;
+}
+
+.provenance__search-results {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0.35rem;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #cbd5f5;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  z-index: 5;
+}
+
+.provenance__search-results li + li {
+  margin-top: 0.25rem;
+}
+
+.provenance__search-results button {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.provenance__search-results button:hover,
+.provenance__search-results button:focus-visible {
+  background: #eef2ff;
+  outline: none;
+}
+
+.provenance__search-result-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.provenance__search-result-meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
 .provenance__label {
   font-weight: 600;
   color: #1f2937;
@@ -430,6 +524,11 @@ section h2 {
   border-radius: 0.75rem;
   padding: 1rem;
   border: 1px solid #e2e8f0;
+}
+
+.provenance__summary-card--handover {
+  background: #fffbeb;
+  border-color: #f97316;
 }
 
 .provenance__summary-path {
@@ -491,6 +590,11 @@ section h2 {
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
 }
 
+.provenance__node--handover {
+  border-color: #f97316;
+  background: #fff7ed;
+}
+
 .provenance__node-title {
   font-weight: 600;
   color: #1f2937;
@@ -520,6 +624,35 @@ section h2 {
   color: #475569;
 }
 
+.provenance__handover-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.provenance__handover-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.provenance__handover-badge--ops {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.provenance__handover-badge--research {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 .provenance__link {
   align-self: flex-start;
   background: transparent;
@@ -545,6 +678,42 @@ section h2 {
 .provenance__empty {
   color: #64748b;
   font-style: italic;
+}
+
+.provenance__more {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.provenance__handover-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.provenance__handover-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.5rem;
+}
+
+.provenance__handover-item:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.provenance__handover-meta {
+  font-size: 0.8rem;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.provenance__handover-state {
+  font-weight: 600;
 }
 
 .storage-explorer {
@@ -814,4 +983,51 @@ section h2 {
   font-size: 0.8rem;
   color: #9ca3af;
   font-style: italic;
+}
+.provenance__graph-section {
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 1.5rem;
+}
+
+.provenance-graph__canvas {
+  width: 100%;
+  height: 420px;
+}
+
+.provenance-graph__node-group {
+  cursor: pointer;
+  outline: none;
+}
+
+.provenance-graph__node-group:focus-visible .provenance-graph__node {
+  stroke-width: 4;
+  stroke: #0f172a;
+}
+
+.provenance-graph__node {
+  transition: transform 0.2s ease;
+}
+
+.provenance-graph__node:hover {
+  transform: scale(1.1);
+}
+
+.provenance-graph__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  fill: #0f172a;
+  pointer-events: none;
+}
+.provenance-graph__links {
+  fill: none;
+  stroke: #cbd5f5;
+  stroke-width: 1.4;
+  stroke-opacity: 0.7;
+}
+
+.provenance-graph__link {
+  fill: none;
 }

@@ -144,3 +144,35 @@ export interface AuditRecentActivityRow {
   actor_identity: string | null;
   actor_roles: string[] | null;
 }
+
+export interface HandoverOverviewRow {
+  research_artefact_id: string;
+  research_artefact_name: string | null;
+  research_scope_keys: string[] | null;
+  ops_artefact_id: string;
+  ops_artefact_name: string | null;
+  ops_scope_keys: string[] | null;
+  research_transfer_state: string | null;
+  ops_transfer_state: string | null;
+  propagation_whitelist: string[] | null;
+  handover_at: string | null;
+  returned_at: string | null;
+  handover_by: string | null;
+  returned_by: string | null;
+}
+
+export interface ScopeTransferOverviewRow {
+  source_artefact_id: string;
+  source_artefact_name: string | null;
+  target_artefact_id: string;
+  target_artefact_name: string | null;
+  relationship_type: string;
+  source_transfer_state: string | null;
+  target_transfer_state: string | null;
+  propagation_whitelist: string[] | null;
+  allowed_roles: string[] | null;
+  handover_at: string | null;
+  returned_at: string | null;
+  handover_by: string | null;
+  returned_by: string | null;
+}

@@ -3,3 +3,7 @@ db.session.sql
 .localdev/
 ops/postgraphile/node_modules/
 ui/node_modules/
+ui/dist/
+ops/examples/jwts/*.jwt
+!ops/examples/jwts/make-dev-jwts.sh
+ui/public/tokens/*.jwt

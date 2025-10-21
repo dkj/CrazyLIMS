@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NavLink,
   Navigate,
@@ -22,7 +22,9 @@ import type {
   LabwareInventoryRow,
   StorageTreeRow,
   TransactionContextActivityRow,
-  AuditRecentActivityRow
+  AuditRecentActivityRow,
+  HandoverOverviewRow,
+  ScopeTransferOverviewRow
 } from "./types";
 
 const POSTGREST_URL: string = (globalThis as any).__POSTGREST_URL__;
@@ -30,16 +32,32 @@ const API_BASE = POSTGREST_URL.replace(/\/$/, "");
 
 const personaLabels: Record<string, string> = {
   admin: "Administrator",
-  operator: "Operator",
+  operator: "Ops Operator",
   researcher: "Researcher (Alice)",
-  researcher_bob: "Researcher (Bob)"
+  researcher_bob: "Researcher (Bob)",
+  roberto: "Researcher (Roberto – Alpha Virtual)",
+  phillipa: "Researcher (Phillipa – Alpha Lab Lead)",
+  ross: "Researcher (Ross – Alpha Lab Tech)",
+  eric: "Researcher (Eric – Beta)",
+  lucy: "Ops Tech (Lucy)",
+  fred: "Ops Tech (Fred)",
+  instrument_alpha: "Instrument (Alpha Sequencer)",
+  external: "External Collaborator"
 };
 
 const personaTokenPaths: Record<string, string> = {
   admin: "/tokens/admin.jwt",
   operator: "/tokens/operator.jwt",
   researcher: "/tokens/researcher.jwt",
-  researcher_bob: "/tokens/researcher_bob.jwt"
+  researcher_bob: "/tokens/researcher_bob.jwt",
+  roberto: "/tokens/roberto.jwt",
+  phillipa: "/tokens/phillipa.jwt",
+  ross: "/tokens/ross.jwt",
+  eric: "/tokens/eric.jwt",
+  lucy: "/tokens/lucy.jwt",
+  fred: "/tokens/fred.jwt",
+  instrument_alpha: "/tokens/instrument_alpha.jwt",
+  external: "/tokens/external.jwt"
 };
 
 function decodeJwt(token: string | undefined) {
@@ -202,11 +220,23 @@ export default function App() {
     "/v_sample_lineage",
     token
   );
+  const handoverOverviewView = useGet<HandoverOverviewRow>(
+    "/v_handover_overview",
+    token
+  );
+  const scopeTransferView = useGet<ScopeTransferOverviewRow>(
+    "/v_scope_transfer_overview",
+    token
+  );
   const labwareInventoryView = useGet<LabwareInventoryRow>(
     "/v_labware_inventory",
     token
   );
   const storageTreeView = useGet<StorageTreeRow>("/v_storage_tree", token);
+  const availableSampleIds = useMemo(
+    () => sampleView.data.map((row) => row.id),
+    [sampleView.data]
+  );
   const txnActivityView = useGet<TransactionContextActivityRow>(
     "/v_transaction_context_activity",
     token
@@ -234,11 +264,6 @@ export default function App() {
   const samplesSectionRef = useRef<HTMLDivElement | null>(null);
   const storageSectionRef = useRef<HTMLDivElement | null>(null);
 
-  const availableSampleIds = useMemo(
-    () => sampleView.data.map((row) => row.id),
-    [sampleView.data]
-  );
-
   useEffect(() => {
     if (!persona) return;
     const path = location.pathname;
@@ -264,18 +289,28 @@ export default function App() {
     }
   };
 
-  const handleSampleFocus = (sampleId: string) => {
-    setFocusedSampleId(sampleId);
-  };
+const handleSampleFocus = (sampleId: string) => {
+  setFocusedSampleId(sampleId);
+};
 
-  const handleSampleFocusWithNavigation = (sampleId: string) => {
-    setFocusedSampleId(sampleId);
-    if (!location.pathname.startsWith("/samples")) {
-      navigate("/samples");
-    } else {
-      samplesSectionRef.current?.focus();
+const handleSampleFocusWithNavigation = (sampleId: string) => {
+  setFocusedSampleId(sampleId);
+  if (!location.pathname.startsWith("/samples")) {
+    navigate("/samples");
+  } else {
+    samplesSectionRef.current?.focus();
+  }
+};
+
+const navigateToSampleIfVisible = useCallback(
+  (artefactId: string | null) => {
+    if (!artefactId) return;
+    if (availableSampleIds.includes(artefactId)) {
+      handleSampleFocusWithNavigation(artefactId);
     }
-  };
+  },
+  [availableSampleIds, handleSampleFocusWithNavigation]
+);
 
   const sampleColumns = useMemo<Column<SampleOverviewRow>[]>(
     () => [
@@ -341,6 +376,56 @@ export default function App() {
       { key: "volume_unit", label: "Unit" }
     ],
     []
+  );
+
+  const scopeTransferColumns = useMemo<Column<ScopeTransferOverviewRow>[]>(
+    () => [
+      {
+        key: "source_artefact_name",
+        label: "Source",
+        render: (row) => {
+          if (availableSampleIds.includes(row.source_artefact_id)) {
+            return (
+              <button
+                type="button"
+                className="table__link-button"
+                onClick={() => navigateToSampleIfVisible(row.source_artefact_id)}
+              >
+                {row.source_artefact_name ?? row.source_artefact_id}
+              </button>
+            );
+          }
+          return row.source_artefact_name ?? row.source_artefact_id;
+        }
+      },
+      {
+        key: "target_artefact_name",
+        label: "Target",
+        render: (row) => {
+          if (availableSampleIds.includes(row.target_artefact_id)) {
+            return (
+              <button
+                type="button"
+                className="table__link-button"
+                onClick={() => navigateToSampleIfVisible(row.target_artefact_id)}
+              >
+                {row.target_artefact_name ?? row.target_artefact_id}
+              </button>
+            );
+          }
+          return row.target_artefact_name ?? row.target_artefact_id;
+        }
+      },
+      { key: "relationship_type", label: "Type" },
+      {
+        key: "allowed_roles",
+        label: "Allowed Roles",
+        render: (row) => row.allowed_roles?.join(", ") ?? ""
+      },
+      { key: "handover_at", label: "Handed Over" },
+      { key: "returned_at", label: "Returned" }
+    ],
+    [availableSampleIds, navigateToSampleIfVisible]
   );
 
   const inventoryColumns = useMemo<Column<InventoryStatusRow>[]>(
@@ -463,15 +548,18 @@ export default function App() {
           samples={sampleView.data}
           lineage={sampleLineageView.data}
           labwareInventory={labwareInventoryView.data}
+          handovers={handoverOverviewView.data}
           loading={
             sampleView.loading ||
             sampleLineageView.loading ||
-            labwareInventoryView.loading
+            labwareInventoryView.loading ||
+            handoverOverviewView.loading
           }
           error={
             sampleView.error ??
             sampleLineageView.error ??
-            labwareInventoryView.error
+            labwareInventoryView.error ??
+            handoverOverviewView.error
           }
           onSelectLabware={handleLabwareSelectionWithNavigation}
           selectedLabwareId={focusedLabwareId}
@@ -575,6 +663,25 @@ export default function App() {
   const sections: SectionDefinition[] = [
     { path: "/overview", label: "Overview", element: overviewSection },
     { path: "/samples", label: "Samples", element: samplesSection },
+    {
+      path: "/transfers",
+      label: "Transfers",
+      element: (
+        <section>
+          <h2>Scope Transfers</h2>
+          <p className="section-subtitle">
+            All scope-to-scope handovers visible to the current persona
+          </p>
+          <DataTable
+            rows={scopeTransferView.data}
+            columns={scopeTransferColumns}
+            loading={scopeTransferView.loading}
+            error={scopeTransferView.error}
+            emptyMessage="No transfers visible for this persona."
+          />
+        </section>
+      )
+    },
     { path: "/storage", label: "Storage", element: storageSection },
     ...(showSecurityMonitoring
       ? [{ path: "/activity", label: "Security", element: securitySection }]

@@ -50,6 +50,41 @@ researcher_bob_payload=$(cat <<JSON
 JSON
 )
 
+roberto_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:roberto","preferred_username":"roberto","email":"roberto@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+phillipa_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:phillipa","preferred_username":"phillipa","email":"phillipa@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+ross_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:ross","preferred_username":"ross","email":"ross@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+eric_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:eric","preferred_username":"eric","email":"eric@example.org","roles":["app_researcher"],"role":"app_researcher","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+lucy_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:lucy","preferred_username":"lucy","email":"lucy@example.org","roles":["app_operator"],"role":"app_operator","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+fred_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:fred","preferred_username":"fred","email":"fred@example.org","roles":["app_operator"],"role":"app_operator","exp":${EXP},"iat":1700000000}
+JSON
+)
+
+instrument_alpha_payload=$(cat <<JSON
+{"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:instrument-alpha","preferred_username":"instrument-alpha","email":"instrument-alpha@example.org","roles":["app_automation"],"role":"app_automation","exp":${EXP},"iat":1700000000}
+JSON
+)
+
 external_payload=$(cat <<JSON
 {"iss":"${ISSUER}","aud":"${AUD}","sub":"urn:app:external","preferred_username":"external","email":"external@example.org","roles":["app_external"],"role":"app_external","exp":${EXP},"iat":1700000000}
 JSON
@@ -66,3 +101,10 @@ emit_token "researcher" "${researcher_payload}"
 emit_token "researcher_bob" "${researcher_bob_payload}"
 emit_token "external" "${external_payload}"
 emit_token "automation" "${automation_payload}"
+emit_token "roberto" "${roberto_payload}"
+emit_token "phillipa" "${phillipa_payload}"
+emit_token "ross" "${ross_payload}"
+emit_token "eric" "${eric_payload}"
+emit_token "lucy" "${lucy_payload}"
+emit_token "fred" "${fred_payload}"
+emit_token "instrument_alpha" "${instrument_alpha_payload}"
