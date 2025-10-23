@@ -26,6 +26,7 @@ services:
       PGRST_DB_PRE_REQUEST: app_security.pre_request
       PGRST_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
       PGRST_OPENAPI_SERVER_PROXY_URI: "http://localhost:${POSTGREST_HOST_PORT:-6000}"
+      PGRST_OPENAPI_MODE: "ignore-privileges"
     depends_on:
       db:
         condition: service_healthy
