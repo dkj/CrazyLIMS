@@ -1054,6 +1054,250 @@ visibility_checks() {
   request_postgrest "instrument cannot see donors" "${instrument_token}" "200" "GET" "/artefacts?metadata->>project_scope=eq.${PROJECT1_CODE}&is_virtual=is.true" "" 'length == 0' "app_provenance"
 }
 
+exercise_workflow_helpers() {
+  local researcher_token
+  researcher_token="$(user_token "gail.gamma@crazy.example")"
+  local project_scope
+  project_scope="$(get_scope_id "${PROJECT1_CODE}")"
+  local reagent_process fragment_process index_process measure_process demux_process storage_event_id lib_artefact
+
+  local manifest_body
+  manifest_body="$(jq -n \
+    --arg scope "${project_scope}" \
+    --arg seed "${SEED_TAG}" \
+    '{
+      p_scope_id: $scope,
+      p_manifest: [
+        {name: ("REST Helper Donor 1 " + $seed), external_identifier: ("rest-helper-d1-" + $seed)},
+        {name: ("REST Helper Donor 2 " + $seed), external_identifier: ("rest-helper-d2-" + $seed)}
+      ]
+    }')"
+
+  request_postgrest "rpc manifest" "${researcher_token}" "200" "POST" "/rpc/sp_register_virtual_manifest" "${manifest_body}" 'length == 2' "app_provenance"
+
+  local donor1 donor2
+  donor1="$(echo "${last_body}" | jq -r '.[0].artefact_id')"
+  donor2="$(echo "${last_body}" | jq -r '.[1].artefact_id')"
+
+  local plate_body
+  plate_body="$(jq -n \
+    --arg scope "${project_scope}" \
+    --arg donor1 "${donor1}" \
+    '{
+      p_container_type_key: "container_plate_96",
+      p_container: {
+        name: "REST Helper Source Plate",
+        external_identifier: ("rest-plate-src-" + $scope),
+        metadata: {origin: "rest"}
+      },
+      p_wells: [
+        {slot_name: "A01", occupant: {name: "REST A01", artefact_type_key: "material_sample", parent_artefact_id: $donor1}},
+        {slot_name: "A02"}
+      ],
+      p_scope_id: $scope
+    }')"
+
+  request_postgrest "rpc register labware" "${researcher_token}" "200" "POST" "/rpc/sp_register_labware_with_wells" "${plate_body}" 'length == 2' "app_provenance"
+
+  local plate_id slot_a01 slot_a02
+  plate_id="$(echo "${last_body}" | jq -r '.[0].container_id')"
+  slot_a01="$(echo "${last_body}" | jq -r '.[] | select(.slot_name=="A01") | .slot_id')"
+  slot_a02="$(echo "${last_body}" | jq -r '.[] | select(.slot_name=="A02") | .slot_id')"
+
+  local load_body
+  load_body="$(jq -n \
+    --arg slot "${slot_a02}" \
+    --arg donor "${donor2}" \
+    '{
+      p_slot_id: $slot,
+      p_material: {name: "REST A02", metadata: {volume_ul: 40}},
+      p_parent_artefact_id: $donor
+    }')"
+
+  request_postgrest "rpc load material" "${researcher_token}" "200" "POST" "/rpc/sp_load_material_into_slot" "${load_body}" 'type == "string" and length > 0' "app_provenance"
+
+  local reagent_body
+  reagent_body="$(jq -n '{
+      p_slot_id: null,
+      p_material: {name: "REST Buffer", artefact_type_key: "reagent_buffer", metadata: {lot: "REST-LOT"}}
+    }')"
+
+  request_postgrest "rpc create reagent" "${researcher_token}" "200" "POST" "/rpc/sp_load_material_into_slot" "${reagent_body}" 'type == "string" and length > 0' "app_provenance"
+  local reagent_id
+  reagent_id="$(echo "${last_body}" | jq -r '.')"
+
+  local apply_body
+  apply_body="$(jq -n \
+    --arg slot "${slot_a02}" \
+    --arg reagent "${reagent_id}" \
+    '{
+      p_target_slot_id: $slot,
+      p_reagent_artefact_id: $reagent,
+      p_output: {name: "REST A02 Treated"}
+    }')"
+
+  request_postgrest "rpc apply reagent" "${researcher_token}" "200" "POST" "/rpc/sp_apply_reagent_in_place" "${apply_body}" 'type == "string" and length > 0' "app_provenance"
+  local treated_id
+  treated_id="$(echo "${last_body}" | jq -r '.')"
+
+  reagent_process="$(lookup_single_id "${researcher_token}" "/process_io?select=process_instance_id,artefact_id&artefact_id=eq.${treated_id}&direction=eq.output&limit=1" "process_instance_id" "app_provenance")"
+  request_postgrest "verify reagent input io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${reagent_process}&io_role=eq.reagent&direction=eq.input" "" 'length == 1' "app_provenance"
+  request_postgrest "verify reagent output io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${reagent_process}&artefact_id=eq.${treated_id}&direction=eq.output" "" 'length == 1' "app_provenance"
+
+  local frag_plate_body
+  frag_plate_body="$(jq -n \
+    --arg scope "${project_scope}" \
+    '{
+      p_container_type_key: "container_plate_96",
+      p_container: {name: "REST Fragment Plate", external_identifier: ("rest-plate-frag-" + $scope)},
+      p_wells: [{slot_name: "A01"}],
+      p_scope_id: $scope
+    }')"
+
+  request_postgrest "rpc register fragment plate" "${researcher_token}" "200" "POST" "/rpc/sp_register_labware_with_wells" "${frag_plate_body}" '. | length == 1' "app_provenance"
+  local dest_plate dest_slot
+  dest_plate="$(echo "${last_body}" | jq -r '.[0].container_id')"
+  dest_slot="$(echo "${last_body}" | jq -r '.[0].slot_id')"
+
+  local fragment_body
+  fragment_body="$(jq -n \
+    --arg src "${plate_id}" \
+    --arg dst "${dest_plate}" \
+    --arg slot_src "A02" \
+    --arg slot_dst "A01" \
+    --arg reagent "${reagent_id}" \
+    '{
+      p_source_plate_id: $src,
+      p_reagent_artefact_id: $reagent,
+      p_destination_plate_id: $dst,
+      p_mapping: [
+        {source_slot: $slot_src, dest_slot: $slot_dst, output_name: "REST Fragment"}
+      ]
+    }')"
+
+  request_postgrest "rpc fragment plate" "${researcher_token}" "200" "POST" "/rpc/sp_fragment_plate" "${fragment_body}" 'type == "string" and length > 0' "app_provenance"
+  fragment_process="$(echo "${last_body}" | jq -r '.')"
+
+  local dest_artefact
+  dest_artefact="$(lookup_single_id "${researcher_token}" "/artefacts?select=artefact_id,container_slot_id&container_slot_id=eq.${dest_slot}&order=updated_at.desc&limit=1" "artefact_id" "app_provenance")"
+  request_postgrest "verify fragment output io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${fragment_process}&artefact_id=eq.${dest_artefact}&direction=eq.output" "" 'length == 1' "app_provenance"
+  request_postgrest "verify fragment reagent io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${fragment_process}&io_role=eq.reagent&direction=eq.input" "" 'length == 1' "app_provenance"
+
+  local library_plate_body
+  library_plate_body="$(jq -n \
+    --arg scope "${project_scope}" \
+    '{
+      p_container_type_key: "container_plate_96",
+      p_container: {name: "REST Library Plate", external_identifier: ("rest-plate-lib-" + $scope)},
+      p_wells: [{slot_name: "A01"}],
+      p_scope_id: $scope
+    }')"
+
+  request_postgrest "rpc register library plate" "${researcher_token}" "200" "POST" "/rpc/sp_register_labware_with_wells" "${library_plate_body}" '. | length == 1' "app_provenance"
+  local lib_plate lib_slot
+  lib_plate="$(echo "${last_body}" | jq -r '.[0].container_id')"
+  lib_slot="$(echo "${last_body}" | jq -r '.[0].slot_id')"
+
+  local index_body
+  index_body="$(jq -n \
+    --arg src_plate "${dest_plate}" \
+    --arg dst_plate "${lib_plate}" \
+    '{
+      p_source_plate_id: $src_plate,
+      p_destination_plate_id: $dst_plate,
+      p_index_manifest: [
+        {source_slot: "A01", dest_slot: "A01", index_pair: "IDX-REST"}
+      ]
+    }')"
+
+  request_postgrest "rpc index libraries" "${researcher_token}" "200" "POST" "/rpc/sp_index_libraries" "${index_body}" 'type == "string" and length > 0' "app_provenance"
+  index_process="$(echo "${last_body}" | jq -r '.')"
+
+  lib_artefact="$(lookup_single_id "${researcher_token}" "/artefacts?select=artefact_id,container_slot_id&container_slot_id=eq.${lib_slot}&order=updated_at.desc&limit=1" "artefact_id" "app_provenance")"
+  request_postgrest "verify index output io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${index_process}&artefact_id=eq.${lib_artefact}&direction=eq.output" "" 'length == 1' "app_provenance"
+
+  local measure_body
+  measure_body="$(jq -n \
+    --arg plate "${lib_plate}" \
+    '{
+      p_process: {plate_id: $plate, process_type_key: "process_plate_measurement", name: "REST QC"},
+      p_measurements: [
+        {slot_name: "A01", traits: {concentration_ng_ul: 25.4}}
+      ]
+    }')"
+
+  request_postgrest "rpc plate measurement" "${researcher_token}" "200" "POST" "/rpc/sp_plate_measurement" "${measure_body}" 'type == "string" and length > 0' "app_provenance"
+  measure_process="$(echo "${last_body}" | jq -r '.')"
+  request_postgrest "verify measurement completed" "${researcher_token}" "200" "GET" "/process_instances?process_instance_id=eq.${measure_process}&status=eq.completed" "" 'length == 1' "app_provenance"
+  request_postgrest "verify measurement traits" "${researcher_token}" "200" "GET" "/artefacts?artefact_id=eq.${lib_artefact}&select=metadata" "" 'length == 1 and (.[] | .metadata.concentration_ng_ul == 25.4)' "app_provenance"
+
+  local tube_body
+  tube_body="$(jq -n \
+    --arg scope "${project_scope}" \
+    '{
+      p_container_type_key: "container_cryovial_2ml",
+      p_container: {name: "REST Pool Tube", external_identifier: ("rest-pool-" + $scope)},
+      p_wells: [{slot_name: "TUBE"}],
+      p_scope_id: $scope
+    }')"
+
+  request_postgrest "rpc register pool tube" "${researcher_token}" "200" "POST" "/rpc/sp_register_labware_with_wells" "${tube_body}" '. | length == 1' "app_provenance"
+  local pool_slot
+  pool_slot="$(echo "${last_body}" | jq -r '.[0].slot_id')"
+
+  local pool_body
+  pool_body="$(jq -n \
+    --arg slot1 "${slot_a01}" \
+    --arg slot2 "${dest_slot}" \
+    --arg dst "${pool_slot}" \
+    --arg scenario "${SCENARIO_KEY}" \
+    '{
+      p_input_slots: [$slot1, $slot2],
+      p_destination_slot_id: $dst,
+      p_volume_ul: 5,
+      p_metadata: {name: "REST Pool", scenario: $scenario}
+    }')"
+
+  request_postgrest "rpc pool fixed" "${researcher_token}" "200" "POST" "/rpc/sp_pool_fixed_volume" "${pool_body}" 'type == "string" and length > 0' "app_provenance"
+  local pool_process
+  pool_process="$(echo "${last_body}" | jq -r '.')"
+  request_postgrest "verify pool io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${pool_process}&io_role=eq.pool_component&direction=eq.pooled_input" "" 'length == 2' "app_provenance"
+
+  local pool_output_id
+  pool_output_id="$(lookup_single_id "${researcher_token}" "/artefacts?select=artefact_id,container_slot_id&container_slot_id=eq.${pool_slot}&order=updated_at.desc&limit=1" "artefact_id" "app_provenance")"
+
+  local demux_body
+  demux_body="$(jq -n \
+    --arg pool "${pool_output_id}" \
+    --arg scenario "${SCENARIO_KEY}" \
+    '{
+      p_pool_artefact_id: $pool,
+      p_run_metadata: {run_id: "REST-RUN"},
+      p_contributors: [
+        {name: "REST FASTQ 1", artefact_type_key: "data_product_sequence", metadata: {scenario: $scenario}},
+        {name: "REST FASTQ 2", artefact_type_key: "data_product_sequence", metadata: {scenario: $scenario}}
+      ]
+    }')"
+
+  request_postgrest "rpc demultiplex" "${researcher_token}" "200" "POST" "/rpc/sp_demultiplex_outputs" "${demux_body}" 'type == "string" and length > 0' "app_provenance"
+  demux_process="$(echo "${last_body}" | jq -r '.')"
+  request_postgrest "verify demux io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${demux_process}&io_role=eq.demultiplexed_output&direction=eq.output" "" 'length == 2' "app_provenance"
+
+  local storage_body
+  storage_body="$(jq -n \
+    --arg artefact "${pool_output_id}" \
+    '{
+      p_event: {artefact_id: $artefact, event_type: "move", reason: "REST helper"}
+    }')"
+
+  request_postgrest "rpc storage" "${researcher_token}" "200" "POST" "/rpc/sp_record_storage_event" "${storage_body}" 'type == "string" and length > 0' "app_provenance"
+  storage_event_id="$(echo "${last_body}" | jq -r '.')"
+  request_postgrest "verify storage event" "${researcher_token}" "200" "GET" "/artefact_storage_events?storage_event_id=eq.${storage_event_id}" "" 'length == 1 and .[0].reason == "REST helper"' "app_provenance"
+
+  request_postgrest "verify demux count" "${researcher_token}" "200" "GET" "/artefacts?metadata->>scenario=eq.${SCENARIO_KEY}&name=ilike.REST%20FASTQ%25" "" 'length == 2' "app_provenance"
+  request_postgrest "verify pool process" "${researcher_token}" "200" "GET" "/process_instances?process_instance_id=eq.${pool_process}" "" 'length == 1' "app_provenance"
+}
+
 admin_setup() {
   local admin_id
   admin_id="$(admin_get_user_id "admin@example.org")"
@@ -1117,6 +1361,7 @@ main() {
   create_gamma_pool
   create_gamma_data_products
   return_gamma_data_products
+  exercise_workflow_helpers
   visibility_checks
 
   if (( failures > 0 )); then

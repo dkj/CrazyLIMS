@@ -99,7 +99,7 @@ Views `app_security.v_transaction_context_activity` and `app_security.v_audit_re
 
 ### Containment & Storage
 
-The containment layer now models wells as artefacts instead of maintaining a separate assignment table. A plate artefact owns a set of well artefacts (A01…H12) that inherit their positional metadata from `container_slots`. Each well artefact persists its `container_artefact_id` and `container_slot_id`, so labware lookups and quantity updates operate on the same row that holds QC traits and measurements. Uniqueness on `container_slot_id` only applies to artefacts whose status is `draft`, `active`, or `reserved`, allowing processes that transform material in-place to retire the previous artefact (`status = 'consumed'`, etc.) and immediately register the replacement occupant while keeping the history intact.
+The containment layer now models wells as artefacts instead of maintaining a separate assignment table. A plate artefact owns a set of well artefacts (A01…H12) that inherit their positional metadata from `container_slots`. Each well artefact persists its `container_artefact_id` and `container_slot_id`, so labware lookups and quantity updates operate on the same row that holds QC traits and measurements. Single-slot labware—cryovials, tubes, cartridges—follows the identical pattern: the occupant is a physical artefact bound to slot `1`, and mutating the material swaps in a new artefact while the container record remains unchanged. Uniqueness on `container_slot_id` only applies to artefacts whose status is `draft`, `active`, or `reserved`, allowing processes that transform material in-place to retire the previous artefact (`status = 'consumed'`, etc.) and immediately register the replacement occupant while keeping the history intact.
 
 | Table | Purpose | Highlights |
 | --- | --- | --- |
@@ -166,7 +166,7 @@ All provenance tables participate in the same audit pipeline, so every change is
 
 ## Useful References
 
-- `ops/db/tests/security.sql` – psql-based regression for RBAC policies.
+- `ops/db/tests/20_security_rls.sql` – psql-based regression coverage for RBAC policies.
 - `scripts/test_rbac.sh` – End-to-end smoke covering PostgREST and PostGraphile using seeded JWT fixtures.
 - `ops/db/migrations/20251010013500_expand_provenance_examples.sql` – Detailed seed script showing how scopes, artefacts, labware, and storage events interrelate.
 

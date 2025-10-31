@@ -30,7 +30,7 @@ Together these structures provide a first-class provenance graph: artefacts conn
 
 ## Containment & Storage
 
-- Containers are artefacts whose type `kind` is `container`. Slot layouts (`container_slot_definitions` and `container_slots`) still describe the physical blueprint, but the slot artefacts now *are* the tracked samples. A 96-well plate therefore has 96 child artefacts (A01…H12) with their own trait sets.
+- Containers are artefacts whose type `kind` is `container`. Slot layouts (`container_slot_definitions` and `container_slots`) still describe the physical blueprint, but the slot artefacts now *are* the tracked samples. A 96-well plate therefore has 96 child artefacts (A01…H12) with their own trait sets, and a single-position container such as a tube or cryovial simply exposes one slot whose occupant is treated the same way.
 - Physical and logical storage locations are modelled via `storage_nodes`, and movements are recorded in `artefact_storage_events`. Helper views (`v_artefact_current_location`, `v_storage_tree`) provide current placements and hierarchical storage paths.
 - Because containers, wells, and locations all participate as artefacts, the model handles “sample in well in plate in rack in freezer” or “data product stored in S3 prefix” uniformly, while ensuring measurements, QC calls, and volume adjustments land on the correct artefact.
 

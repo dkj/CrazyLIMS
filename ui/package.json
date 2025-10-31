@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed"
   },
   "dependencies": {
     "d3": "^7.9.0",
@@ -14,6 +16,7 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/d3": "^7.4.3",
     "@types/react": "^18.3.2",
     "@types/react-dom": "^18.3.0",

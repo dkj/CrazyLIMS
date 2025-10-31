@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story db/test
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -193,6 +193,7 @@ ci:
 	$(MAKE) contracts/export
 	$(MAKE) test/security
 	$(MAKE) test/rest-story
+	$(MAKE) test/ui
 else
 ci:
 	$(LOCAL_DEV_HELPER) reset >/dev/null 2>&1
@@ -206,6 +207,7 @@ ci:
 	$(MAKE) contracts/export
 	$(MAKE) test/security
 	$(MAKE) test/rest-story
+	$(MAKE) test/ui
 endif
 
 jwt/dev:
@@ -218,6 +220,20 @@ jwt/dev:
 
 ui/dev:
 	docker compose up ui
+
+ifeq ($(USE_DOCKER),yes)
+ui/install:
+	docker compose run --rm --no-deps ui npm ci
+
+test/ui: ui/install
+	docker compose run --rm --no-deps ui npm run test:ui
+else
+ui/install:
+	@echo "Skipping UI dependency install (Docker disabled or unavailable)."
+
+test/ui:
+	@echo "Skipping UI Playwright tests (Docker disabled or unavailable)."
+endif
 
 ifeq ($(USE_DOCKER),yes)
 test/security:
@@ -255,8 +271,15 @@ test/rest-story:
 	$(REST_STORY_TEST_SCRIPT)
 endif
 
+ifeq ($(USE_DOCKER),yes)
 db/test:
-	cat ops/db/tests/security.sql | $(PSQL_BATCH)
+	cat ops/db/tests/*.sql | $(PSQL_BATCH)
+else
+db/test:
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
+	cat ops/db/tests/*.sql | $(PSQL_BATCH)
+endif
 
 rest:
 	@echo "GET /samples via PostgREST";
