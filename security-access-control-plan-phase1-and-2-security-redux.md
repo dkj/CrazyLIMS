@@ -89,7 +89,7 @@ Phase 2 Redux already delivered the tables we need. Security Redux focuses on 
 
 ### 4.1 Session Context
 - Lean on the existing transaction-context plumbing (`app_security.start_transaction_context`, `finish_transaction_context`) to stamp `app.actor_id`, `app.roles`, and JWT claims.  
-- Ensure migrations and fixtures keep the seed users/scopes used by `ops/db/tests/security.sql` so tests can continue to `SET ROLE app_researcher` et al without additional scaffolding.  
+- Ensure migrations and fixtures keep the seed users/scopes used by `ops/db/tests/20_security_rls.sql` so tests can continue to `SET ROLE app_researcher` et al without additional scaffolding.  
 - No new GUCs are required; instead we document the expectation that UI/API layers set `app.impersonated_roles` when acting on behalf of another user.
 
 ### 4.2 Helper Functions
@@ -362,7 +362,7 @@ $$;
 1. Use `db.session.sql` (or an ad-hoc psql script) to call `app_provenance.sp_handover_to_ops` for a seeded research artefact; capture the returned ops scope id.  
 2. Run existing ops processes (normalisation + sequencing) by inserting `process_instances`/`process_io` rows, ensuring pooled outputs carry both ops and research scope tags.  
 3. Trigger `app_provenance.sp_return_from_ops`, then query `app_provenance.v_lineage_summary` to confirm the returned references and scope visibility were created.  
-4. Verify RLS expectations by running the corresponding `SET ROLE` blocks from `ops/db/tests/security.sql`, mirroring the automated tests before codifying them.
+4. Verify RLS expectations by running the corresponding `SET ROLE` blocks from `ops/db/tests/20_security_rls.sql`, mirroring the automated tests before codifying them.
 
 ---
 
@@ -382,11 +382,11 @@ $$;
 - **T12:** Column-level guard rejects unauthorized field edits (trigger error).
 
 ### 11.1 Implementation Backlog (TDD)
-- **security.sql::handover_visibility** — add fixtures that call `sp_handover_to_ops`, assert `app_provenance.can_access_artefact` grants lineage-based reads, and confirm Alpha cannot see Beta artefacts.  
-- **security.sql::ops_personas** — extend instrument/ops user sections to exercise pooled processes, validating `process_io` visibility and QC write restrictions.  
-- **security.sql::data_product_return** — script a pooled sequencing run, call `sp_return_from_ops`, ensure returned references are visible only to contributing scopes, and verify audit rows.  
-- **security.sql::propagation_controls** — cover whitelist updates by toggling trait values and confirming propagation fires (and non-whitelisted fields remain unchanged).  
-- **security.sql::negative_cases** — add regression tests for cross-scope read attempts and mutation attempts once `transfer_state = 'returned'`.
+- **50_handover_workflows.sql::handover_visibility** — add fixtures that call `sp_handover_to_ops`, assert `app_provenance.can_access_artefact` grants lineage-based reads, and confirm Alpha cannot see Beta artefacts.  
+- **20_security_rls.sql::ops_personas** — extend instrument/ops user sections to exercise pooled processes, validating `process_io` visibility and QC write restrictions.  
+- **50_handover_workflows.sql::data_product_return** — script a pooled sequencing run, call `sp_return_from_ops`, ensure returned references are visible only to contributing scopes, and verify audit rows.  
+- **50_handover_workflows.sql::propagation_controls** — cover whitelist updates by toggling trait values and confirming propagation fires (and non-whitelisted fields remain unchanged).  
+- **20_security_rls.sql::negative_cases** — add regression tests for cross-scope read attempts and mutation attempts once `transfer_state = 'returned'`.
 
 ---
 

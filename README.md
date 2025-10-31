@@ -36,14 +36,14 @@ When Docker cannot be used (e.g. Codespaces-lite/Codex sandboxes), the `scripts/
 
 # apply migrations / run checks via Make targets as usual
 make db/migrate
-make db/test
+make db/test      # automatically starts the helper and waits for PostgreSQL
 make test/security
 
 # stop services when finished (Postgres, PostgREST, PostGraphile)
 ./scripts/local_dev.sh stop
 ```
 
-Additional helper commands:
+Additional helper commands (the Make targets above will start/stop services as needed, but these are handy for manual control):
 
 - `./scripts/local_dev.sh status` – quick health snapshot
 - `./scripts/local_dev.sh reset` – stop everything and remove `.localdev/pgdata`
@@ -133,7 +133,7 @@ Automation-authenticated workflows should call stored procedures that invoke `ap
 
 ## Testing
 
-- `make db/test` ensures critical invariants (transaction contexts required for writes, audit log population, RLS scope for researchers).
+- `make db/test` ensures critical invariants (transaction contexts required for writes, audit log population, RLS scope for researchers). The SQL harness uses session-scoped assertion helpers so it runs on stock Postgres and emits `NOTICE: ok - ...` lines for each check.
 - `make test/security` runs `scripts/test_rbac.sh`, which exercises the transaction helpers and researcher RLS using the CLI.
 - Both invocations are part of `make ci`; hook CI providers to run it on pull requests.
 
