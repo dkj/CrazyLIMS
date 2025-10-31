@@ -6291,6 +6291,106 @@
         ]
       }
     },
+    "/rpc/sp_demultiplex_outputs": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_contributors": {
+                  "format": "jsonb"
+                },
+                "p_pool_artefact_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_run_metadata": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_pool_artefact_id",
+                "p_run_metadata",
+                "p_contributors"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_demultiplex_outputs"
+        ]
+      }
+    },
+    "/rpc/sp_fragment_plate": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_destination_plate_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_mapping": {
+                  "format": "jsonb"
+                },
+                "p_reagent_artefact_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_source_plate_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_source_plate_id",
+                "p_reagent_artefact_id",
+                "p_destination_plate_id",
+                "p_mapping"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_fragment_plate"
+        ]
+      }
+    },
     "/rpc/set_transfer_state": {
       "post": {
         "parameters": [
@@ -6335,6 +6435,44 @@
         },
         "tags": [
           "(rpc) set_transfer_state"
+        ]
+      }
+    },
+    "/rpc/sp_record_process_with_io": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_process": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_process"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_record_process_with_io"
         ]
       }
     },
@@ -6397,6 +6535,95 @@
         ]
       }
     },
+    "/rpc/get_artefact_type_id": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_type_key": {
+                  "format": "text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_type_key"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) get_artefact_type_id"
+        ]
+      }
+    },
+    "/rpc/sp_register_labware_with_wells": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_container": {
+                  "format": "jsonb"
+                },
+                "p_container_type_key": {
+                  "format": "text",
+                  "type": "string"
+                },
+                "p_scope_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_wells": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_container_type_key",
+                "p_container"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_register_labware_with_wells"
+        ]
+      }
+    },
     "/rpc/can_update_handover_metadata": {
       "post": {
         "parameters": [
@@ -6436,6 +6663,44 @@
         ]
       }
     },
+    "/rpc/sp_record_storage_event": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_event": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_event"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_record_storage_event"
+        ]
+      }
+    },
     "/rpc/propagate_handover_corrections": {
       "post": {
         "parameters": [
@@ -6472,6 +6737,45 @@
         },
         "tags": [
           "(rpc) propagate_handover_corrections"
+        ]
+      }
+    },
+    "/rpc/get_process_type_id": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_type_key": {
+                  "format": "text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_type_key"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) get_process_type_id"
         ]
       }
     },
@@ -6705,6 +7009,53 @@
         ]
       }
     },
+    "/rpc/sp_apply_reagent_in_place": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_output": {
+                  "format": "jsonb"
+                },
+                "p_reagent_artefact_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_target_slot_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_target_slot_id",
+                "p_reagent_artefact_id"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_apply_reagent_in_place"
+        ]
+      }
+    },
     "/rpc/project_handover_metadata": {
       "get": {
         "parameters": [
@@ -6779,6 +7130,109 @@
         },
         "tags": [
           "(rpc) project_handover_metadata"
+        ]
+      }
+    },
+    "/rpc/sp_index_libraries": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_destination_plate_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_index_manifest": {
+                  "format": "jsonb"
+                },
+                "p_source_plate_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_source_plate_id",
+                "p_index_manifest",
+                "p_destination_plate_id"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_index_libraries"
+        ]
+      }
+    },
+    "/rpc/sp_pool_fixed_volume": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_destination_slot_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_input_slots": {
+                  "format": "uuid[]",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "p_metadata": {
+                  "format": "jsonb"
+                },
+                "p_volume_ul": {
+                  "format": "numeric",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "p_input_slots",
+                "p_destination_slot_id",
+                "p_volume_ul"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_pool_fixed_volume"
         ]
       }
     },
@@ -6864,6 +7318,146 @@
         },
         "tags": [
           "(rpc) can_access_artefact"
+        ]
+      }
+    },
+    "/rpc/sp_plate_measurement": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_measurements": {
+                  "format": "jsonb"
+                },
+                "p_process": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_process",
+                "p_measurements"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_plate_measurement"
+        ]
+      }
+    },
+    "/rpc/sp_register_virtual_manifest": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_default_type_key": {
+                  "format": "text",
+                  "type": "string"
+                },
+                "p_manifest": {
+                  "format": "jsonb"
+                },
+                "p_scope_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_scope_id",
+                "p_manifest"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_register_virtual_manifest"
+        ]
+      }
+    },
+    "/rpc/sp_load_material_into_slot": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_material": {
+                  "format": "jsonb"
+                },
+                "p_parent_artefact_id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "p_relationship_type": {
+                  "format": "text",
+                  "type": "string"
+                },
+                "p_slot_id": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "p_slot_id",
+                "p_material"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_load_material_into_slot"
         ]
       }
     },
@@ -7474,6 +8068,7 @@
     "v_sample_lineage": {
       "properties": {
         "parent_sample_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7486,6 +8081,7 @@
           "type": "string"
         },
         "parent_project_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7506,7 +8102,6 @@
           "type": "string"
         },
         "child_sample_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7519,7 +8114,6 @@
           "type": "string"
         },
         "child_project_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
