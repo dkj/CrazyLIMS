@@ -271,8 +271,15 @@ test/rest-story:
 	$(REST_STORY_TEST_SCRIPT)
 endif
 
+ifeq ($(USE_DOCKER),yes)
 db/test:
-	cat ops/db/tests/security.sql | $(PSQL_BATCH)
+	cat ops/db/tests/*.sql | $(PSQL_BATCH)
+else
+db/test:
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(MAKE) db-wait >/dev/null
+	cat ops/db/tests/*.sql | $(PSQL_BATCH)
+endif
 
 rest:
 	@echo "GET /samples via PostgREST";
