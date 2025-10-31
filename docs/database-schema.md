@@ -166,7 +166,7 @@ All provenance tables participate in the same audit pipeline, so every change is
 
 ## Useful References
 
-- `ops/db/tests/security.sql` – psql-based regression for RBAC policies.
+- `ops/db/tests/20_security_rls.sql` – psql-based regression coverage for RBAC policies.
 - `scripts/test_rbac.sh` – End-to-end smoke covering PostgREST and PostGraphile using seeded JWT fixtures.
 - `ops/db/migrations/20251010013500_expand_provenance_examples.sql` – Detailed seed script showing how scopes, artefacts, labware, and storage events interrelate.
 

@@ -85,7 +85,7 @@ Policies depend on `app_security.has_role('role_name')`, which inspects `app.rol
 ## Development & Verification
 
 - JWT fixtures live under `ops/examples/jwts`. Run `make jwt/dev` after adjusting claims or secrets; the script regenerates tokens and copies them into `ui/public/tokens`.
-- `make db/test` executes SQL regression checks under `ops/db/tests/security.sql`, asserting that writes without contexts fail, audit rows materialise, `finish_transaction_context` updates status, and researcher RLS limits visibility.
+- `make db/test` executes the SQL regression suite in `ops/db/tests/*.sql`, asserting that writes without contexts fail, audit rows materialise, `finish_transaction_context` updates status, and researcher RLS limits visibility.
 - `make test/security` runs `scripts/test_rbac.sh`, which exercises the transaction helpers via the CLI (admin creates/modifies/deletes within a context; researchers attempt forbidden operations).
 
 ## Operational Checklist
