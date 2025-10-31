@@ -54,16 +54,21 @@ print_note() {
 }
 
 run_as_pg_user() {
+  local env_args=(env PATH="${PATH}")
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    env_args+=(LD_LIBRARY_PATH="${LD_LIBRARY_PATH}")
+  fi
+
   if [[ "$(id -un)" == "${PG_RUNTIME_USER}" ]]; then
-    "$@"
+    "${env_args[@]}" "$@"
     return
   fi
 
   if command -v runuser >/dev/null 2>&1; then
-    runuser -u "${PG_RUNTIME_USER}" -- "$@"
+    runuser -u "${PG_RUNTIME_USER}" -- "${env_args[@]}" "$@"
   else
     local cmd
-    cmd="$(printf '%q ' "$@")"
+    cmd="$(printf '%q ' "${env_args[@]}" "$@")"
     su - "${PG_RUNTIME_USER}" -s /bin/sh -c "${cmd% }"
   fi
 }
