@@ -68,6 +68,17 @@ BEGIN
     END IF;
   END IF;
 
+  IF v_event_type NOT IN (
+    'register',
+    'move',
+    'check_in',
+    'check_out',
+    'disposed',
+    'location_correction'
+  ) THEN
+    RAISE EXCEPTION 'invalid storage event type %', v_event_type USING ERRCODE='22000';
+  END IF;
+
   -- clear location if no target provided
   IF v_to IS NULL THEN
     RETURN NULL;

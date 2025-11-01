@@ -137,6 +137,12 @@ DECLARE
   v_sample_id uuid;
   v_shelf_id uuid;
   v_txn uuid;
+  v_event_time timestamptz := timestamptz '2025-01-02 08:15+00';
+  v_checkout_time timestamptz := timestamptz '2025-01-02 09:00+00';
+  v_last_type text;
+  v_last_at timestamptz;
+  v_view_type text;
+  v_view_at timestamptz;
 BEGIN
   EXECUTE format('SET app.roles = %L', 'app_admin');
   SELECT id INTO v_self_id FROM app_core.users WHERE email = 'ops@example.org';
@@ -203,17 +209,46 @@ BEGIN
       'artefact_id', v_sample_id::text,
       'to_storage_id', v_shelf_id::text,
       'reason', 'unit-test operator',
+      'event_type', 'check_in',
+      'occurred_at', v_event_time::text,
       'metadata', jsonb_build_object('unit_test','operator')
     )
   );
 
   EXECUTE 'SET ROLE app_admin';
   EXECUTE format('SET app.roles = %L', 'app_admin');
+
+  SELECT
+    rel.metadata->>'last_event_type',
+    (rel.metadata->>'last_event_at')::timestamptz
+  INTO v_last_type, v_last_at
+  FROM app_provenance.artefact_relationships rel
+  WHERE rel.child_artefact_id = v_sample_id
+    AND rel.relationship_type = 'located_in'
+  ORDER BY rel.created_at DESC
+  LIMIT 1;
+
+  PERFORM pg_temp.isnt_null(v_last_type, 'sp_set_location recorded last event metadata');
+  PERFORM pg_temp.is(v_last_type, 'check_in', 'sp_set_location captured last event type');
+  PERFORM pg_temp.is(v_last_at::text, v_event_time::text, 'sp_set_location captured occurred_at timestamp');
+
+  SELECT last_event_type, last_event_at
+  INTO v_view_type, v_view_at
+  FROM app_provenance.v_artefact_current_location
+  WHERE artefact_id = v_sample_id
+  LIMIT 1;
+
+  PERFORM pg_temp.isnt_null(v_view_type, 'v_artefact_current_location exposes sample row');
+  PERFORM pg_temp.is(v_view_type, 'check_in', 'v_artefact_current_location exposes last event type');
+  PERFORM pg_temp.is(v_view_at::text, v_event_time::text, 'v_artefact_current_location exposes last event timestamp');
+
   PERFORM app_provenance.sp_set_location(
     jsonb_build_object(
       'artefact_id', v_sample_id::text,
       'expected_from_storage_id', v_shelf_id::text,
-      'reason', 'unit-test checkout'
+      'reason', 'unit-test checkout',
+      'event_type', 'check_out',
+      'occurred_at', v_checkout_time::text
     )
   );
   EXECUTE 'SET ROLE app_operator';

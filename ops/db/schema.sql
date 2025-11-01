@@ -1770,6 +1770,17 @@ BEGIN
     END IF;
   END IF;
 
+  IF v_event_type NOT IN (
+    'register',
+    'move',
+    'check_in',
+    'check_out',
+    'disposed',
+    'location_correction'
+  ) THEN
+    RAISE EXCEPTION 'invalid storage event type %', v_event_type USING ERRCODE='22000';
+  END IF;
+
   -- clear location if no target provided
   IF v_to IS NULL THEN
     RETURN NULL;
@@ -3342,7 +3353,7 @@ CREATE VIEW app_provenance.v_artefact_current_location AS
                 END, s.assigned_at DESC
          LIMIT 1) AS scope_id,
     COALESCE((parent.metadata -> 'environment'::text), '{}'::jsonb) AS environment,
-    rel.metadata ->> 'last_event_type'::text AS last_event_type,
+    (rel.metadata ->> 'last_event_type'::text) AS last_event_type,
     ((rel.metadata ->> 'last_event_at'::text))::timestamp with time zone AS last_event_at
    FROM (app_provenance.artefact_relationships rel
      JOIN app_provenance.artefacts parent ON ((parent.artefact_id = rel.parent_artefact_id)))

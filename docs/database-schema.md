@@ -148,6 +148,8 @@ These views are exposed to the `app_auth` role group so PostgREST/PostGraphile c
     - `to_storage_id` (uuid, optional): Storage artefact (kind = `storage`) to place into. Omit or set `null` to clear location.
     - `expected_from_storage_id` (uuid, optional): If provided and does not match the current location, the call fails (guards against races).
     - `reason` (text, optional) and `metadata` (jsonb, optional): Added into the relationship’s metadata and audit trail.
+    - `event_type` (text, optional): When provided, must be one of `register`, `move`, `check_in`, `check_out`, `disposed`, or `location_correction`. Defaults to `register` for the first placement and `move` thereafter.
+    - `occurred_at` (timestamptz, optional): Timestamp recorded as the last movement; defaults to `clock_timestamp()` if omitted.
   - Behavior: Deletes any existing `located_in` edge for the artefact, then inserts a new one when `to_storage_id` is provided. Returns the new `relationship_id` (uuid string). Returns `null` when clearing location.
   - PostgREST examples (operator token):
     - Place into a sublocation
