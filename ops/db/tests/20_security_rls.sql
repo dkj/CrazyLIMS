@@ -179,11 +179,14 @@ BEGIN
       END IF;
   END;
 
-  SELECT count(*) INTO v_node_count FROM app_provenance.storage_nodes;
-  PERFORM pg_temp.cmp_ok(v_node_count, '>=', 3, 'Operator can view storage nodes');
+  SELECT count(*) INTO v_node_count
+  FROM app_provenance.artefacts a
+  JOIN app_provenance.artefact_types t ON t.artefact_type_id = a.artefact_type_id
+  WHERE t.type_key IN ('storage_facility','storage_unit','storage_sublocation','storage_virtual','storage_external');
+  PERFORM pg_temp.cmp_ok(v_node_count, '>=', 3, 'Operator can view storage artefacts');
 
   v_sample_id := (SELECT artefact_id FROM app_provenance.artefacts WHERE external_identifier = 'SAMPLE-GP-001-A');
-  v_shelf_id := (SELECT storage_node_id FROM app_provenance.storage_nodes WHERE node_key = 'sublocation:freezer_nf1:shelf_a');
+  v_shelf_id := (SELECT artefact_id FROM app_provenance.artefacts WHERE external_identifier = 'sublocation:freezer_nf1:shelf_a');
 
   PERFORM pg_temp.ok(app_provenance.can_access_artefact(v_sample_id), 'Operator can access sample artefact');
 
@@ -194,31 +197,25 @@ BEGIN
     p_client_app => 'unit-tests'
   );
 
-  INSERT INTO app_provenance.artefact_storage_events (
-    artefact_id,
-    from_storage_node_id,
-    to_storage_node_id,
-    event_type,
-    occurred_at,
-    actor_id,
-    reason,
-    metadata
-  )
-  VALUES (
-    v_sample_id,
-    v_shelf_id,
-    NULL,
-    'check_out',
-    clock_timestamp(),
-    v_self_id,
-    'unit-test checkout',
-    jsonb_build_object('unit_test','operator')
+  -- Use RPC to set/clear location with operator privileges
+  PERFORM app_provenance.sp_set_location(
+    jsonb_build_object(
+      'artefact_id', v_sample_id::text,
+      'to_storage_id', v_shelf_id::text,
+      'reason', 'unit-test operator',
+      'metadata', jsonb_build_object('unit_test','operator')
+    )
   );
 
   EXECUTE 'SET ROLE app_admin';
   EXECUTE format('SET app.roles = %L', 'app_admin');
-  DELETE FROM app_provenance.artefact_storage_events
-  WHERE metadata ->> 'unit_test' = 'operator';
+  PERFORM app_provenance.sp_set_location(
+    jsonb_build_object(
+      'artefact_id', v_sample_id::text,
+      'expected_from_storage_id', v_shelf_id::text,
+      'reason', 'unit-test checkout'
+    )
+  );
   EXECUTE 'SET ROLE app_operator';
   EXECUTE format('SET app.roles = %L', 'app_operator');
 
@@ -338,5 +335,3 @@ END;
 $$;
 
 RESET ROLE;
-
-

@@ -3884,427 +3884,6 @@
         ]
       }
     },
-    "/artefact_storage_events": {
-      "get": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.storage_event_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.artefact_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.from_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.to_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.event_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.occurred_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.actor_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.process_instance_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.reason"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.metadata"
-          },
-          {
-            "$ref": "#/parameters/select"
-          },
-          {
-            "$ref": "#/parameters/order"
-          },
-          {
-            "$ref": "#/parameters/range"
-          },
-          {
-            "$ref": "#/parameters/rangeUnit"
-          },
-          {
-            "$ref": "#/parameters/offset"
-          },
-          {
-            "$ref": "#/parameters/limit"
-          },
-          {
-            "$ref": "#/parameters/preferCount"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "items": {
-                "$ref": "#/definitions/artefact_storage_events"
-              },
-              "type": "array"
-            }
-          },
-          "206": {
-            "description": "Partial Content"
-          }
-        },
-        "tags": [
-          "artefact_storage_events"
-        ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/body.artefact_storage_events"
-          },
-          {
-            "$ref": "#/parameters/select"
-          },
-          {
-            "$ref": "#/parameters/preferPost"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "tags": [
-          "artefact_storage_events"
-        ]
-      },
-      "delete": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.storage_event_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.artefact_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.from_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.to_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.event_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.occurred_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.actor_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.process_instance_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.reason"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.metadata"
-          },
-          {
-            "$ref": "#/parameters/preferReturn"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "tags": [
-          "artefact_storage_events"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.storage_event_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.artefact_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.from_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.to_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.event_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.occurred_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.actor_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.process_instance_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.reason"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.artefact_storage_events.metadata"
-          },
-          {
-            "$ref": "#/parameters/body.artefact_storage_events"
-          },
-          {
-            "$ref": "#/parameters/preferReturn"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "tags": [
-          "artefact_storage_events"
-        ]
-      }
-    },
-    "/storage_nodes": {
-      "get": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_key"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.display_name"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.description"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.parent_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.scope_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.barcode"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.environment"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.metadata"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.is_active"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_by"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_by"
-          },
-          {
-            "$ref": "#/parameters/select"
-          },
-          {
-            "$ref": "#/parameters/order"
-          },
-          {
-            "$ref": "#/parameters/range"
-          },
-          {
-            "$ref": "#/parameters/rangeUnit"
-          },
-          {
-            "$ref": "#/parameters/offset"
-          },
-          {
-            "$ref": "#/parameters/limit"
-          },
-          {
-            "$ref": "#/parameters/preferCount"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "items": {
-                "$ref": "#/definitions/storage_nodes"
-              },
-              "type": "array"
-            }
-          },
-          "206": {
-            "description": "Partial Content"
-          }
-        },
-        "tags": [
-          "storage_nodes"
-        ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/body.storage_nodes"
-          },
-          {
-            "$ref": "#/parameters/select"
-          },
-          {
-            "$ref": "#/parameters/preferPost"
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created"
-          }
-        },
-        "tags": [
-          "storage_nodes"
-        ]
-      },
-      "delete": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_key"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.display_name"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.description"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.parent_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.scope_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.barcode"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.environment"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.metadata"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.is_active"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_by"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_by"
-          },
-          {
-            "$ref": "#/parameters/preferReturn"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "tags": [
-          "storage_nodes"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_key"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.node_type"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.display_name"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.description"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.parent_storage_node_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.scope_id"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.barcode"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.environment"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.metadata"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.is_active"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.created_by"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_at"
-          },
-          {
-            "$ref": "#/parameters/rowFilter.storage_nodes.updated_by"
-          },
-          {
-            "$ref": "#/parameters/body.storage_nodes"
-          },
-          {
-            "$ref": "#/parameters/preferReturn"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "tags": [
-          "storage_nodes"
-        ]
-      }
-    },
     "/artefact_traits": {
       "get": {
         "parameters": [
@@ -6663,44 +6242,6 @@
         ]
       }
     },
-    "/rpc/sp_record_storage_event": {
-      "post": {
-        "parameters": [
-          {
-            "in": "body",
-            "name": "args",
-            "required": true,
-            "schema": {
-              "properties": {
-                "p_event": {
-                  "format": "jsonb"
-                }
-              },
-              "required": [
-                "p_event"
-              ],
-              "type": "object"
-            }
-          },
-          {
-            "$ref": "#/parameters/preferParams"
-          }
-        ],
-        "produces": [
-          "application/json",
-          "application/vnd.pgrst.object+json;nulls=stripped",
-          "application/vnd.pgrst.object+json"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "(rpc) sp_record_storage_event"
-        ]
-      }
-    },
     "/rpc/propagate_handover_corrections": {
       "post": {
         "parameters": [
@@ -6776,6 +6317,44 @@
         },
         "tags": [
           "(rpc) get_process_type_id"
+        ]
+      }
+    },
+    "/rpc/sp_set_location": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_move": {
+                  "format": "jsonb"
+                }
+              },
+              "required": [
+                "p_move"
+              ],
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) sp_set_location"
         ]
       }
     },
@@ -7237,6 +6816,30 @@
       }
     },
     "/rpc/storage_path": {
+      "get": {
+        "parameters": [
+          {
+            "format": "uuid",
+            "in": "query",
+            "name": "p_storage_node_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) storage_path"
+        ]
+      },
       "post": {
         "parameters": [
           {
@@ -7645,6 +7248,7 @@
           "type": "string"
         },
         "storage_sublocation_id": {
+          "description": "Note:\nThis is a Foreign Key to `v_inventory_status.id`.<fk table='v_inventory_status' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7931,6 +7535,7 @@
           "type": "string"
         },
         "current_storage_sublocation_id": {
+          "description": "Note:\nThis is a Foreign Key to `v_inventory_status.id`.<fk table='v_inventory_status' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8068,7 +7673,6 @@
     "v_sample_lineage": {
       "properties": {
         "parent_sample_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8118,6 +7722,7 @@
           "type": "string"
         },
         "child_labware_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8151,7 +7756,6 @@
     "v_sample_overview": {
       "properties": {
         "id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8184,6 +7788,7 @@
           "type": "string"
         },
         "current_labware_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8208,7 +7813,6 @@
     "v_labware_contents": {
       "properties": {
         "labware_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8229,6 +7833,7 @@
           "type": "string"
         },
         "sample_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8249,6 +7854,7 @@
           "type": "string"
         },
         "current_storage_sublocation_id": {
+          "description": "Note:\nThis is a Foreign Key to `v_inventory_status.id`.<fk table='v_inventory_status' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8909,144 +8515,6 @@
       },
       "type": "object"
     },
-    "artefact_storage_events": {
-      "required": [
-        "storage_event_id",
-        "artefact_id",
-        "event_type",
-        "occurred_at",
-        "metadata"
-      ],
-      "properties": {
-        "storage_event_id": {
-          "default": "gen_random_uuid()",
-          "description": "Note:\nThis is a Primary Key.<pk/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "artefact_id": {
-          "description": "Note:\nThis is a Foreign Key to `artefacts.artefact_id`.<fk table='artefacts' column='artefact_id'/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "from_storage_node_id": {
-          "description": "Note:\nThis is a Foreign Key to `storage_nodes.storage_node_id`.<fk table='storage_nodes' column='storage_node_id'/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "to_storage_node_id": {
-          "description": "Note:\nThis is a Foreign Key to `storage_nodes.storage_node_id`.<fk table='storage_nodes' column='storage_node_id'/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "event_type": {
-          "format": "text",
-          "type": "string"
-        },
-        "occurred_at": {
-          "default": "clock_timestamp()",
-          "format": "timestamp with time zone",
-          "type": "string"
-        },
-        "actor_id": {
-          "format": "uuid",
-          "type": "string"
-        },
-        "process_instance_id": {
-          "description": "Note:\nThis is a Foreign Key to `process_instances.process_instance_id`.<fk table='process_instances' column='process_instance_id'/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "reason": {
-          "format": "text",
-          "type": "string"
-        },
-        "metadata": {
-          "format": "jsonb"
-        }
-      },
-      "type": "object"
-    },
-    "storage_nodes": {
-      "required": [
-        "storage_node_id",
-        "node_key",
-        "node_type",
-        "display_name",
-        "environment",
-        "metadata",
-        "is_active",
-        "created_at",
-        "updated_at"
-      ],
-      "properties": {
-        "storage_node_id": {
-          "default": "gen_random_uuid()",
-          "description": "Note:\nThis is a Primary Key.<pk/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "node_key": {
-          "format": "text",
-          "type": "string"
-        },
-        "node_type": {
-          "format": "text",
-          "type": "string"
-        },
-        "display_name": {
-          "format": "text",
-          "type": "string"
-        },
-        "description": {
-          "format": "text",
-          "type": "string"
-        },
-        "parent_storage_node_id": {
-          "description": "Note:\nThis is a Foreign Key to `storage_nodes.storage_node_id`.<fk table='storage_nodes' column='storage_node_id'/>",
-          "format": "uuid",
-          "type": "string"
-        },
-        "scope_id": {
-          "format": "uuid",
-          "type": "string"
-        },
-        "barcode": {
-          "format": "text",
-          "type": "string"
-        },
-        "environment": {
-          "format": "jsonb"
-        },
-        "metadata": {
-          "format": "jsonb"
-        },
-        "is_active": {
-          "default": true,
-          "format": "boolean",
-          "type": "boolean"
-        },
-        "created_at": {
-          "default": "clock_timestamp()",
-          "format": "timestamp with time zone",
-          "type": "string"
-        },
-        "created_by": {
-          "format": "uuid",
-          "type": "string"
-        },
-        "updated_at": {
-          "default": "clock_timestamp()",
-          "format": "timestamp with time zone",
-          "type": "string"
-        },
-        "updated_by": {
-          "format": "uuid",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "artefact_traits": {
       "required": [
         "trait_id",
@@ -9332,6 +8800,7 @@
           "type": "string"
         },
         "storage_node_id": {
+          "description": "Note:\nThis is a Foreign Key to `artefacts.artefact_id`.<fk table='artefacts' column='artefact_id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -9648,6 +9117,7 @@
           "type": "string"
         },
         "storage_node_id": {
+          "description": "Note:\nThis is a Foreign Key to `artefacts.artefact_id`.<fk table='artefacts' column='artefact_id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -11547,174 +11017,6 @@
     },
     "rowFilter.container_slot_definitions.metadata": {
       "name": "metadata",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "body.artefact_storage_events": {
-      "name": "artefact_storage_events",
-      "description": "artefact_storage_events",
-      "required": false,
-      "in": "body",
-      "schema": {
-        "$ref": "#/definitions/artefact_storage_events"
-      }
-    },
-    "rowFilter.artefact_storage_events.storage_event_id": {
-      "name": "storage_event_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.artefact_id": {
-      "name": "artefact_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.from_storage_node_id": {
-      "name": "from_storage_node_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.to_storage_node_id": {
-      "name": "to_storage_node_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.event_type": {
-      "name": "event_type",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.occurred_at": {
-      "name": "occurred_at",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.actor_id": {
-      "name": "actor_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.process_instance_id": {
-      "name": "process_instance_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.reason": {
-      "name": "reason",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.artefact_storage_events.metadata": {
-      "name": "metadata",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "body.storage_nodes": {
-      "name": "storage_nodes",
-      "description": "storage_nodes",
-      "required": false,
-      "in": "body",
-      "schema": {
-        "$ref": "#/definitions/storage_nodes"
-      }
-    },
-    "rowFilter.storage_nodes.storage_node_id": {
-      "name": "storage_node_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.node_key": {
-      "name": "node_key",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.node_type": {
-      "name": "node_type",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.display_name": {
-      "name": "display_name",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.description": {
-      "name": "description",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.parent_storage_node_id": {
-      "name": "parent_storage_node_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.scope_id": {
-      "name": "scope_id",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.barcode": {
-      "name": "barcode",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.environment": {
-      "name": "environment",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.metadata": {
-      "name": "metadata",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.is_active": {
-      "name": "is_active",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.created_at": {
-      "name": "created_at",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.created_by": {
-      "name": "created_by",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.updated_at": {
-      "name": "updated_at",
-      "required": false,
-      "in": "query",
-      "type": "string"
-    },
-    "rowFilter.storage_nodes.updated_by": {
-      "name": "updated_by",
       "required": false,
       "in": "query",
       "type": "string"

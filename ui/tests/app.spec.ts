@@ -29,4 +29,31 @@ test.describe("Operations console smoke test", () => {
     await expect(page.getByRole("link", { name: "Samples" })).toBeVisible();
     await expect(page.getByText("Active roles: app_admin, app_operator")).toBeVisible();
   });
+
+  test("navigates to storage explorer without rendering errors", async ({ page }) => {
+    await page.route("**/api/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        body: "[]",
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    });
+
+    await page.goto("/");
+
+    await page.selectOption("#persona", "admin");
+    await page.waitForURL("**/overview");
+
+    await page.getByRole("link", { name: "Storage" }).click();
+    await page.waitForURL("**/storage");
+
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Labware & Storage Explorer" })
+    ).toBeVisible();
+    await expect(
+      page.getByText("No storage hierarchy available for the current persona.")
+    ).toBeVisible();
+  });
 });

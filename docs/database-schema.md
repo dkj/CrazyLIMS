@@ -34,9 +34,8 @@ erDiagram
   APP_PROVENANCE_PROCESS_INSTANCES ||--o{ APP_PROVENANCE_PROCESS_SCOPES : scoped
   APP_SECURITY_SCOPES ||--o{ APP_PROVENANCE_PROCESS_SCOPES : tags
 
-  APP_PROVENANCE_STORAGE_NODES ||--o{ APP_PROVENANCE_ARTEFACT_STORAGE_EVENTS : transitions
-  APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACT_STORAGE_EVENTS : stored
-  APP_SECURITY_SCOPES ||--o{ APP_PROVENANCE_STORAGE_NODES : governs
+  APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACT_RELATIONSHIPS : located_in
+  APP_SECURITY_SCOPES ||--o{ APP_PROVENANCE_ARTEFACTS : governs
 
   APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_CONTAINER_SLOTS : defines_slots
   APP_PROVENANCE_ARTEFACTS ||--o{ APP_PROVENANCE_ARTEFACTS : owns_wells
@@ -105,8 +104,7 @@ The containment layer now models wells as artefacts instead of maintaining a sep
 | --- | --- | --- |
 | `container_slot_definitions` / `container_slots` | Physical layout of labware | Slot definitions provide the blueprint; slots can be instantiated per container artefact |
 | Physical well artefacts | One artefact per instantiated slot | Wells inherit coordinates from `container_slots` but live in `app_provenance.artefacts`; `container_slot_id` remains unique for live (`draft`/`active`/`reserved`) artefacts, while retired occupants can coexist for provenance; traits capture volume, concentration, fragment metrics, QC status |
-| `storage_nodes` | Hierarchical storage tree | Facility → unit → sublocation; joins into `app_security.scopes` |
-| `artefact_storage_events` | Movement history | `from_storage_node_id`, `to_storage_node_id`, `event_type`, actor and reason; audit-triggered |
+| Storage as artefacts | Hierarchical storage tree in the graph | Facilities, units, freezers, shelves, drawers, racks, and boxes are represented as artefacts with `kind = 'storage'` (type_keys: `storage_facility`, `storage_unit`, `storage_sublocation`, etc.). The hierarchy and placements use `artefact_relationships` with `relationship_type = 'located_in'`. Scope governance attaches via `artefact_scopes`. Movement history is available via audit logs and processes rather than a bespoke events table. |
 
 ### Scope Bridges
 
@@ -117,7 +115,7 @@ The containment layer now models wells as artefacts instead of maintaining a sep
 
 | View | Purpose |
 | --- | --- |
-| `v_artefact_current_location` | Latest storage node per artefact |
+| `v_artefact_current_location` | Current storage artefact per artefact (via `located_in`) |
 | `v_container_contents` | Slot-level labware roster with sample metadata |
 | `v_accessible_artefacts` | Artefacts filtered by `can_access_artefact` for lightweight listings |
 
@@ -137,6 +135,30 @@ The containment layer now models wells as artefacts instead of maintaining a sep
 | `v_transaction_context_activity` / `v_audit_recent_activity` | Operator dashboards sourced from the audit tables |
 
 These views are exposed to the `app_auth` role group so PostgREST/PostGraphile can surface them directly. Each view internally calls the provenance access helpers to avoid leaking out-of-scope artefacts even if underlying tables are filtered by RLS.
+
+---
+
+## RPCs – Storage Placement
+
+- `app_provenance.sp_set_location(p_move jsonb) → uuid`
+  - Purpose: Set or clear the current storage location for an artefact by managing a single `located_in` relationship.
+  - AuthZ: Requires effective role `app_operator`, `app_admin`, or `app_automation`.
+  - Input payload (`p_move`):
+    - `artefact_id` (uuid, required): Artefact to place or clear.
+    - `to_storage_id` (uuid, optional): Storage artefact (kind = `storage`) to place into. Omit or set `null` to clear location.
+    - `expected_from_storage_id` (uuid, optional): If provided and does not match the current location, the call fails (guards against races).
+    - `reason` (text, optional) and `metadata` (jsonb, optional): Added into the relationship’s metadata and audit trail.
+  - Behavior: Deletes any existing `located_in` edge for the artefact, then inserts a new one when `to_storage_id` is provided. Returns the new `relationship_id` (uuid string). Returns `null` when clearing location.
+  - PostgREST examples (operator token):
+    - Place into a sublocation
+      - `POST /rpc/sp_set_location`
+      - Body: `{ "p_move": { "artefact_id": "<artefact-uuid>", "to_storage_id": "<storage-uuid>", "reason": "Placed in freezer A" } }`
+      - Returns: `"<relationship-uuid>"`
+    - Clear current location with optimistic check
+      - `POST /rpc/sp_set_location`
+      - Body: `{ "p_move": { "artefact_id": "<artefact-uuid>", "expected_from_storage_id": "<storage-uuid>", "reason": "Checked out" } }`
+      - Returns: `null`
+  - Verify: Query `app_provenance.v_artefact_current_location` to see effective placement.
 
 ---
 

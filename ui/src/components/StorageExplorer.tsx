@@ -51,6 +51,9 @@ export function StorageExplorer({
   const facilities: FacilityOption[] = useMemo(() => {
     const seen = new Map<string, FacilityOption>();
     storageTree.forEach((row) => {
+      if (!row.facility_id || !row.facility_name) {
+        return;
+      }
       if (!seen.has(row.facility_id)) {
         seen.set(row.facility_id, {
           id: row.facility_id,
@@ -65,7 +68,7 @@ export function StorageExplorer({
     if (!facilityId) return [];
     const seen = new Map<string, UnitOption>();
     storageTree
-      .filter((row) => row.facility_id === facilityId)
+      .filter((row) => row.facility_id === facilityId && row.unit_id && row.unit_name)
       .forEach((row) => {
         if (!seen.has(row.unit_id)) {
           seen.set(row.unit_id, { id: row.unit_id, name: row.unit_name });

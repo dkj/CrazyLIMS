@@ -36,7 +36,6 @@ DECLARE
   v_pool_process uuid;
   v_pool_output uuid;
   v_demux_process uuid;
-  v_storage_event uuid;
   v_library_output uuid;
   v_types text[];
 BEGIN
@@ -408,25 +407,7 @@ BEGIN
     'Demultiplex process recorded two output artefacts'
   );
 
-  v_storage_event := app_provenance.sp_record_storage_event(
-    jsonb_build_object(
-      'artefact_id', v_pool_output::text,
-      'event_type', 'move',
-      'reason', 'Unit test placement'
-    )
-  );
-
-  PERFORM pg_temp.isnt_null(v_storage_event, 'Storage event helper returned identifier');
-
-  PERFORM pg_temp.ok(
-    EXISTS (
-      SELECT 1
-        FROM app_provenance.artefact_storage_events
-       WHERE storage_event_id = v_storage_event
-         AND reason = 'Unit test placement'
-    ),
-    'Storage event recorded with expected reason'
-  );
+  -- Storage is now modelled via relationships; no-op here
 
   PERFORM pg_temp.ok(
     EXISTS (
