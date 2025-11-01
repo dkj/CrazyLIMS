@@ -169,8 +169,8 @@ SELECT
     ORDER BY CASE s.relationship WHEN 'primary' THEN 0 ELSE 1 END, s.assigned_at DESC
     LIMIT 1) AS scope_id,
   COALESCE(parent.metadata->'environment', '{}'::jsonb) AS environment,
-  NULL::text AS last_event_type,
-  NULL::timestamptz AS last_event_at
+  rel.metadata->>'last_event_type' AS last_event_type,
+  (rel.metadata->>'last_event_at')::timestamptz AS last_event_at
 FROM app_provenance.artefact_relationships rel
 JOIN app_provenance.artefacts parent ON parent.artefact_id = rel.parent_artefact_id
 WHERE rel.relationship_type = 'located_in';

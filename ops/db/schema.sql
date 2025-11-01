@@ -3318,8 +3318,8 @@ CREATE VIEW app_provenance.v_artefact_current_location AS
                 END, s.assigned_at DESC
          LIMIT 1) AS scope_id,
     COALESCE((parent.metadata -> 'environment'::text), '{}'::jsonb) AS environment,
-    NULL::text AS last_event_type,
-    NULL::timestamp with time zone AS last_event_at
+    rel.metadata ->> 'last_event_type'::text AS last_event_type,
+    ((rel.metadata ->> 'last_event_at'::text))::timestamp with time zone AS last_event_at
    FROM (app_provenance.artefact_relationships rel
      JOIN app_provenance.artefacts parent ON ((parent.artefact_id = rel.parent_artefact_id)))
   WHERE (rel.relationship_type = 'located_in'::text);
