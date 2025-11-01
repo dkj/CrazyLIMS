@@ -21,6 +21,8 @@ DECLARE
   v_current uuid;
   v_rel_id uuid;
   v_storage_kind text;
+  v_event_type text;
+  v_occurred_at timestamptz;
 BEGIN
   PERFORM app_security.require_transaction_context();
 
@@ -33,6 +35,8 @@ BEGIN
   v_expected := NULLIF(v_payload->>'expected_from_storage_id','')::uuid;
   v_reason := NULLIF(v_payload->>'reason','');
   v_meta := coalesce(v_payload->'metadata', '{}'::jsonb);
+  v_event_type := lower(NULLIF(v_payload->>'event_type',''));
+  v_occurred_at := coalesce(NULLIF(v_payload->>'occurred_at','')::timestamptz, clock_timestamp());
 
   IF v_child IS NULL THEN
     RAISE EXCEPTION 'artefact_id required';
@@ -56,6 +60,14 @@ BEGIN
   DELETE FROM app_provenance.artefact_relationships
   WHERE child_artefact_id = v_child AND relationship_type='located_in';
 
+  IF v_event_type IS NULL THEN
+    IF v_current IS NULL THEN
+      v_event_type := 'register';
+    ELSE
+      v_event_type := 'move';
+    END IF;
+  END IF;
+
   -- clear location if no target provided
   IF v_to IS NULL THEN
     RETURN NULL;
@@ -76,7 +88,19 @@ BEGIN
   END IF;
 
   INSERT INTO app_provenance.artefact_relationships (parent_artefact_id, child_artefact_id, relationship_type, process_instance_id, metadata)
-  VALUES (v_to, v_child, 'located_in', NULL, v_meta || jsonb_build_object('reason', v_reason, 'source', 'sp_set_location', 'actor', v_actor))
+  VALUES (
+    v_to,
+    v_child,
+    'located_in',
+    NULL,
+    v_meta || jsonb_build_object(
+      'reason', v_reason,
+      'source', 'sp_set_location',
+      'actor', v_actor,
+      'last_event_type', v_event_type,
+      'last_event_at', v_occurred_at
+    )
+  )
   RETURNING relationship_id INTO v_rel_id;
 
   RETURN v_rel_id;
