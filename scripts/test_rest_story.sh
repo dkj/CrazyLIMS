@@ -101,6 +101,10 @@ TYPE_SAMPLE=""
 TYPE_LIBRARY=""
 TYPE_POOL=""
 TYPE_DATA=""
+TYPE_STORAGE_SUB=""
+
+STORAGE_FACILITY_MAIN=""
+STORAGE_UNIT_DEFAULT=""
 
 GAMMA_WELLS=("A01" "A02")
 
@@ -396,9 +400,20 @@ lookup_type_ids() {
   TYPE_LIBRARY="$(lookup_single_id "${ADMIN_TOKEN}" "/artefact_types?select=artefact_type_id&type_key=eq.library" "artefact_type_id" "app_provenance")"
   TYPE_POOL="$(lookup_single_id "${ADMIN_TOKEN}" "/artefact_types?select=artefact_type_id&type_key=eq.pooled_library" "artefact_type_id" "app_provenance")"
   TYPE_DATA="$(lookup_single_id "${ADMIN_TOKEN}" "/artefact_types?select=artefact_type_id&type_key=eq.data_product_sequence" "artefact_type_id" "app_provenance")"
+  TYPE_STORAGE_SUB="$(lookup_single_id "${ADMIN_TOKEN}" "/artefact_types?select=artefact_type_id&type_key=eq.storage_sublocation" "artefact_type_id" "app_provenance")"
 
-  if [[ -z "${TYPE_PLATE}" || -z "${TYPE_SAMPLE}" || -z "${TYPE_LIBRARY}" || -z "${TYPE_POOL}" || -z "${TYPE_DATA}" ]]; then
+  if [[ -z "${TYPE_PLATE}" || -z "${TYPE_SAMPLE}" || -z "${TYPE_LIBRARY}" || -z "${TYPE_POOL}" || -z "${TYPE_DATA}" || -z "${TYPE_STORAGE_SUB}" ]]; then
     echo "failed to lookup required artefact types" >&2
+    exit 1
+  fi
+}
+
+lookup_storage_roots() {
+  STORAGE_FACILITY_MAIN="$(lookup_single_id "${ADMIN_TOKEN}" "/artefacts?select=artefact_id&external_identifier=eq.facility:main_biolab" "artefact_id" "app_provenance")"
+  STORAGE_UNIT_DEFAULT="$(lookup_single_id "${ADMIN_TOKEN}" "/artefacts?select=artefact_id&external_identifier=eq.unit:freezer_nf1" "artefact_id" "app_provenance")"
+
+  if [[ -z "${STORAGE_FACILITY_MAIN}" ]]; then
+    echo "failed to locate main facility storage artefact" >&2
     exit 1
   fi
 }
@@ -1283,16 +1298,46 @@ exercise_workflow_helpers() {
   demux_process="$(echo "${last_body}" | jq -r '.')"
   request_postgrest "verify demux io" "${researcher_token}" "200" "GET" "/process_io?process_instance_id=eq.${demux_process}&io_role=eq.demultiplexed_output&direction=eq.output" "" 'length == 2' "app_provenance"
 
+  # Create an ops-owned storage sublocation and place the pool output into it
+  local ops_token
+  ops_token="$(user_token "poppy.ops@crazy.example")"
+  local storage_id
+  storage_id="$(new_uuid)"
   local storage_body
   storage_body="$(jq -n \
-    --arg artefact "${pool_output_id}" \
+    --arg id "${storage_id}" \
+    --arg type "${TYPE_STORAGE_SUB}" \
+    --arg seed "${SEED_TAG}" \
+    --arg scenario "${SCENARIO_KEY}" \
     '{
-      p_event: {artefact_id: $artefact, event_type: "move", reason: "REST helper"}
+      artefact_id: $id,
+      artefact_type_id: $type,
+      name: "Ops Shelf A",
+      external_identifier: ("sublocation:ops:" + $seed),
+      status: "active",
+      metadata: {seed: $seed, scenario: $scenario, storage_level: "sublocation"}
     }')"
+  request_postgrest "create ops storage" "${ops_token}" "201" "POST" "/artefacts" "${storage_body}" "" "app_provenance" "return=minimal"
 
-  request_postgrest "rpc storage" "${researcher_token}" "200" "POST" "/rpc/sp_record_storage_event" "${storage_body}" 'type == "string" and length > 0' "app_provenance"
-  storage_event_id="$(echo "${last_body}" | jq -r '.')"
-  request_postgrest "verify storage event" "${researcher_token}" "200" "GET" "/artefact_storage_events?storage_event_id=eq.${storage_event_id}" "" 'length == 1 and .[0].reason == "REST helper"' "app_provenance"
+  local storage_scope
+  storage_scope="$(artefact_scope_body "${storage_id}" "${OPS_FACILITY_CODE}" "ops storage")"
+  request_postgrest "ops storage scope" "${ops_token}" "201" "POST" "/artefact_scopes" "${storage_scope}" "" "app_provenance" "return=minimal"
+
+  local parent_relationship
+  if [[ -n "${STORAGE_UNIT_DEFAULT}" ]]; then
+    parent_relationship="$(relationship_body "${STORAGE_UNIT_DEFAULT}" "${storage_id}" "located_in" "ops storage parent")"
+  else
+    parent_relationship="$(relationship_body "${STORAGE_FACILITY_MAIN}" "${storage_id}" "located_in" "ops storage parent")"
+  fi
+  request_postgrest "ops storage parent" "${ADMIN_TOKEN}" "201" "POST" "/artefact_relationships" "${parent_relationship}" "" "app_provenance" "return=minimal"
+
+  local rpc_body
+  rpc_body="$(jq -n \
+    --arg artefact "${pool_output_id}" \
+    --arg to "${storage_id}" \
+    '{ p_move: { artefact_id: $artefact, to_storage_id: $to, reason: "REST helper" } }')"
+  request_postgrest "storage placement" "${ops_token}" "200" "POST" "/rpc/sp_set_location" "${rpc_body}" 'type == "string" and length > 0' "app_provenance"
+  request_postgrest "verify storage location" "${researcher_token}" "200" "GET" "/v_artefact_current_location?artefact_id=eq.${pool_output_id}" "" 'length == 1' "app_provenance"
 
   request_postgrest "verify demux count" "${researcher_token}" "200" "GET" "/artefacts?metadata->>scenario=eq.${SCENARIO_KEY}&name=ilike.REST%20FASTQ%25" "" 'length == 2' "app_provenance"
   request_postgrest "verify pool process" "${researcher_token}" "200" "GET" "/process_instances?process_instance_id=eq.${pool_process}" "" 'length == 1' "app_provenance"
@@ -1350,6 +1395,7 @@ main() {
   issue_story_tokens
   admin_setup
   lookup_type_ids
+  lookup_storage_roots
 
   create_gamma_donors
   create_gamma_plate

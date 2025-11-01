@@ -215,8 +215,6 @@ CREATE FUNCTION app_provenance.can_access_storage_node(p_storage_node_id uuid, p
     SET search_path TO 'pg_catalog', 'public', 'app_provenance', 'app_security', 'app_core'
     SET row_security TO 'off'
     AS $$
-DECLARE
-  v_scope uuid;
 BEGIN
   IF p_storage_node_id IS NULL THEN
     RETURN false;
@@ -226,21 +224,19 @@ BEGIN
     RETURN true;
   END IF;
 
-  SELECT scope_id
-    INTO v_scope
-    FROM app_provenance.storage_nodes
-   WHERE storage_node_id = p_storage_node_id
-     AND is_active;
-
-  IF NOT FOUND THEN
-    RETURN false;
-  END IF;
-
-  IF v_scope IS NULL THEN
+  -- If no explicit scope is linked to the storage artefact, allow read
+  IF NOT EXISTS (
+    SELECT 1 FROM app_provenance.artefact_scopes s WHERE s.artefact_id = p_storage_node_id
+  ) THEN
     RETURN true;
   END IF;
 
-  RETURN app_security.actor_has_scope(v_scope, p_required_roles);
+  RETURN EXISTS (
+    SELECT 1
+    FROM app_provenance.artefact_scopes s
+    WHERE s.artefact_id = p_storage_node_id
+      AND app_security.actor_has_scope(s.scope_id, p_required_roles)
+  );
 END;
 $$;
 
@@ -1439,66 +1435,6 @@ $$;
 
 
 --
--- Name: sp_record_storage_event(jsonb); Type: FUNCTION; Schema: app_provenance; Owner: -
---
-
-CREATE FUNCTION app_provenance.sp_record_storage_event(p_event jsonb) RETURNS uuid
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'public', 'app_provenance', 'app_security', 'app_core'
-    SET row_security TO 'off'
-    AS $$
-DECLARE
-  v_payload jsonb := coalesce(p_event, '{}'::jsonb);
-  v_actor uuid := app_security.current_actor_id();
-  v_event_id uuid;
-  v_event_type text;
-  v_from uuid;
-  v_to uuid;
-BEGIN
-  PERFORM app_security.require_transaction_context();
-
-  IF jsonb_typeof(v_payload) <> 'object' THEN
-    RAISE EXCEPTION 'Storage event payload must be object';
-  END IF;
-
-  v_event_type := lower(coalesce(v_payload->>'event_type', 'move'));
-  v_from := NULLIF(v_payload->>'from_storage_node_id','')::uuid;
-  v_to := NULLIF(v_payload->>'to_storage_node_id','')::uuid;
-
-  IF v_event_type <> 'register' AND v_from IS NULL AND v_to IS NULL THEN
-    v_event_type := 'register';
-  END IF;
-
-  INSERT INTO app_provenance.artefact_storage_events (
-    artefact_id,
-    from_storage_node_id,
-    to_storage_node_id,
-    event_type,
-    occurred_at,
-    actor_id,
-    process_instance_id,
-    reason,
-    metadata
-  )
-  VALUES (
-    (v_payload->>'artefact_id')::uuid,
-    v_from,
-    v_to,
-    v_event_type,
-    coalesce(NULLIF(v_payload->>'occurred_at','')::timestamptz, clock_timestamp()),
-    coalesce(NULLIF(v_payload->>'actor_id','')::uuid, v_actor),
-    NULLIF(v_payload->>'process_instance_id','')::uuid,
-    v_payload->>'reason',
-    coalesce(v_payload->'metadata', '{}'::jsonb) || jsonb_build_object('source', 'sp_record_storage_event')
-  )
-  RETURNING storage_event_id INTO v_event_id;
-
-  RETURN v_event_id;
-END;
-$$;
-
-
---
 -- Name: sp_register_labware_with_wells(text, jsonb, jsonb, uuid); Type: FUNCTION; Schema: app_provenance; Owner: -
 --
 
@@ -1768,6 +1704,124 @@ $$;
 
 
 --
+-- Name: sp_set_location(jsonb); Type: FUNCTION; Schema: app_provenance; Owner: -
+--
+
+CREATE FUNCTION app_provenance.sp_set_location(p_move jsonb) RETURNS uuid
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_provenance', 'app_security', 'app_core'
+    SET row_security TO 'off'
+    AS $$
+DECLARE
+  v_payload jsonb := coalesce(p_move, '{}'::jsonb);
+  v_actor uuid := app_security.current_actor_id();
+  v_child uuid;
+  v_to uuid;
+  v_expected uuid;
+  v_reason text;
+  v_meta jsonb;
+  v_current uuid;
+  v_rel_id uuid;
+  v_storage_kind text;
+  v_event_type text;
+  v_occurred_at timestamptz;
+BEGIN
+  PERFORM app_security.require_transaction_context();
+
+  IF jsonb_typeof(v_payload) <> 'object' THEN
+    RAISE EXCEPTION 'Location payload must be object';
+  END IF;
+
+  v_child := NULLIF(v_payload->>'artefact_id','')::uuid;
+  v_to := NULLIF(v_payload->>'to_storage_id','')::uuid;
+  v_expected := NULLIF(v_payload->>'expected_from_storage_id','')::uuid;
+  v_reason := NULLIF(v_payload->>'reason','');
+  v_meta := coalesce(v_payload->'metadata', '{}'::jsonb);
+  v_event_type := lower(NULLIF(v_payload->>'event_type',''));
+  v_occurred_at := coalesce(NULLIF(v_payload->>'occurred_at','')::timestamptz, clock_timestamp());
+
+  IF v_child IS NULL THEN
+    RAISE EXCEPTION 'artefact_id required';
+  END IF;
+
+  IF NOT (app_security.session_has_role('app_admin') OR app_security.session_has_role('app_operator') OR app_security.session_has_role('app_automation')) THEN
+     RAISE EXCEPTION 'insufficient privileges for set_location' USING ERRCODE='42501';
+  END IF;
+
+  SELECT r.parent_artefact_id INTO v_current
+  FROM app_provenance.artefact_relationships r
+  WHERE r.child_artefact_id = v_child AND r.relationship_type='located_in'
+  ORDER BY r.created_at DESC NULLS LAST
+  LIMIT 1;
+
+  IF v_expected IS NOT NULL AND v_expected <> v_current THEN
+     RAISE EXCEPTION 'expected from % does not match current %', v_expected, v_current USING ERRCODE='P0001';
+  END IF;
+
+  -- remove existing location
+  DELETE FROM app_provenance.artefact_relationships
+  WHERE child_artefact_id = v_child AND relationship_type='located_in';
+
+  IF v_event_type IS NULL THEN
+    IF v_current IS NULL THEN
+      v_event_type := 'register';
+    ELSE
+      v_event_type := 'move';
+    END IF;
+  END IF;
+
+  IF v_event_type NOT IN (
+    'register',
+    'move',
+    'check_in',
+    'check_out',
+    'disposed',
+    'location_correction'
+  ) THEN
+    RAISE EXCEPTION 'invalid storage event type %', v_event_type USING ERRCODE='22000';
+  END IF;
+
+  -- clear location if no target provided
+  IF v_to IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- verify target is storage artefact and accessible
+  SELECT at.kind INTO v_storage_kind
+  FROM app_provenance.artefacts a
+  JOIN app_provenance.artefact_types at ON at.artefact_type_id = a.artefact_type_id
+  WHERE a.artefact_id = v_to;
+
+  IF v_storage_kind IS NULL OR v_storage_kind <> 'storage' THEN
+    RAISE EXCEPTION 'target is not a storage artefact: %', v_to USING ERRCODE='P0001';
+  END IF;
+
+  IF NOT app_provenance.can_access_storage_node(v_to, ARRAY['app_operator','app_automation']) AND NOT app_security.session_has_role('app_admin') THEN
+     RAISE EXCEPTION 'cannot access storage %', v_to USING ERRCODE='42501';
+  END IF;
+
+  INSERT INTO app_provenance.artefact_relationships (parent_artefact_id, child_artefact_id, relationship_type, process_instance_id, metadata)
+  VALUES (
+    v_to,
+    v_child,
+    'located_in',
+    NULL,
+    v_meta || jsonb_build_object(
+      'reason', v_reason,
+      'source', 'sp_set_location',
+      'actor', v_actor,
+      'last_event_type', v_event_type,
+      'last_event_at', v_occurred_at
+    )
+  )
+  RETURNING relationship_id INTO v_rel_id;
+
+  RETURN v_rel_id;
+END;
+$$;
+
+
+--
 -- Name: sp_transfer_between_scopes(uuid, text, text, uuid[], text[], uuid, text[], text, jsonb, jsonb); Type: FUNCTION; Schema: app_provenance; Owner: -
 --
 
@@ -1950,43 +2004,21 @@ $$;
 --
 
 CREATE FUNCTION app_provenance.storage_path(p_storage_node_id uuid) RETURNS text
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE sql STABLE
     SET search_path TO 'pg_catalog', 'public', 'app_provenance'
-    SET row_security TO 'on'
     AS $$
-DECLARE
-  result text;
-BEGIN
-  IF p_storage_node_id IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  WITH RECURSIVE path_nodes AS (
-    SELECT
-      sn.storage_node_id,
-      sn.display_name,
-      sn.parent_storage_node_id,
-      1 AS depth
-    FROM app_provenance.storage_nodes sn
-    WHERE sn.storage_node_id = p_storage_node_id
-
-    UNION ALL
-
-    SELECT
-      parent.storage_node_id,
-      parent.display_name,
-      parent.parent_storage_node_id,
-      path_nodes.depth + 1
-    FROM app_provenance.storage_nodes parent
-    JOIN path_nodes
-      ON path_nodes.parent_storage_node_id = parent.storage_node_id
-  )
-  SELECT string_agg(display_name, ' / ' ORDER BY depth DESC)
-  INTO result
-  FROM path_nodes;
-
-  RETURN result;
-END;
+WITH RECURSIVE ascend AS (
+  SELECT a.artefact_id, a.name, 1 AS depth
+  FROM app_provenance.artefacts a
+  WHERE a.artefact_id = p_storage_node_id
+  UNION ALL
+  SELECT parent.artefact_id, parent.name, depth + 1
+  FROM app_provenance.artefact_relationships r
+  JOIN app_provenance.artefacts parent ON parent.artefact_id = r.parent_artefact_id
+  JOIN ascend child ON child.artefact_id = r.child_artefact_id
+  WHERE r.relationship_type = 'located_in'
+)
+SELECT string_agg(name, ' / ' ORDER BY depth DESC) FROM ascend;
 $$;
 
 
@@ -3279,29 +3311,6 @@ COMMENT ON VIEW app_core.v_handover_overview IS 'Summarises handover duplicates,
 
 
 --
--- Name: artefact_storage_events; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.artefact_storage_events (
-    storage_event_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    artefact_id uuid NOT NULL,
-    from_storage_node_id uuid,
-    to_storage_node_id uuid,
-    event_type text NOT NULL,
-    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    actor_id uuid,
-    process_instance_id uuid,
-    reason text,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    CONSTRAINT artefact_storage_events_check CHECK (((from_storage_node_id IS NOT NULL) OR (to_storage_node_id IS NOT NULL) OR (event_type = 'register'::text))),
-    CONSTRAINT artefact_storage_events_event_type_check CHECK ((event_type = ANY (ARRAY['register'::text, 'move'::text, 'check_in'::text, 'check_out'::text, 'disposed'::text, 'location_correction'::text]))),
-    CONSTRAINT artefact_storage_events_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text))
-);
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events FORCE ROW LEVEL SECURITY;
-
-
---
 -- Name: artefact_types; Type: TABLE; Schema: app_provenance; Owner: -
 --
 
@@ -3317,7 +3326,7 @@ CREATE TABLE app_provenance.artefact_types (
     created_by uuid,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_by uuid,
-    CONSTRAINT artefact_types_kind_check CHECK ((kind = ANY (ARRAY['subject'::text, 'material'::text, 'reagent'::text, 'container'::text, 'data_product'::text, 'instrument_run'::text, 'workflow'::text, 'instrument'::text, 'virtual'::text, 'other'::text]))),
+    CONSTRAINT artefact_types_kind_check CHECK ((kind = ANY (ARRAY['subject'::text, 'material'::text, 'reagent'::text, 'container'::text, 'data_product'::text, 'instrument_run'::text, 'workflow'::text, 'instrument'::text, 'virtual'::text, 'storage'::text, 'other'::text]))),
     CONSTRAINT artefact_types_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
     CONSTRAINT artefact_types_type_key_check CHECK ((type_key = lower(type_key)))
 );
@@ -3326,63 +3335,29 @@ ALTER TABLE ONLY app_provenance.artefact_types FORCE ROW LEVEL SECURITY;
 
 
 --
--- Name: storage_nodes; Type: TABLE; Schema: app_provenance; Owner: -
---
-
-CREATE TABLE app_provenance.storage_nodes (
-    storage_node_id uuid DEFAULT gen_random_uuid() NOT NULL,
-    node_key text NOT NULL,
-    node_type text NOT NULL,
-    display_name text NOT NULL,
-    description text,
-    parent_storage_node_id uuid,
-    scope_id uuid,
-    barcode text,
-    environment jsonb DEFAULT '{}'::jsonb NOT NULL,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
-    is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    created_by uuid,
-    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
-    updated_by uuid,
-    CONSTRAINT storage_nodes_check CHECK (((parent_storage_node_id IS NULL) OR (parent_storage_node_id <> storage_node_id))),
-    CONSTRAINT storage_nodes_environment_check CHECK ((jsonb_typeof(environment) = ANY (ARRAY['object'::text, 'null'::text]))),
-    CONSTRAINT storage_nodes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
-    CONSTRAINT storage_nodes_node_key_check CHECK ((node_key = lower(node_key))),
-    CONSTRAINT storage_nodes_node_type_check CHECK ((node_type = ANY (ARRAY['facility'::text, 'unit'::text, 'sublocation'::text, 'virtual'::text, 'external'::text])))
-);
-
-ALTER TABLE ONLY app_provenance.storage_nodes FORCE ROW LEVEL SECURITY;
-
-
---
 -- Name: v_artefact_current_location; Type: VIEW; Schema: app_provenance; Owner: -
 --
 
 CREATE VIEW app_provenance.v_artefact_current_location AS
- WITH latest_event AS (
-         SELECT DISTINCT ON (ase.artefact_id) ase.artefact_id,
-            ase.event_type,
-            ase.occurred_at,
-            ase.to_storage_node_id,
-            ase.from_storage_node_id,
-            ase.metadata
-           FROM app_provenance.artefact_storage_events ase
-          ORDER BY ase.artefact_id, ase.occurred_at DESC
-        )
- SELECT le.artefact_id,
-        CASE
-            WHEN (le.event_type = ANY (ARRAY['check_out'::text, 'disposed'::text])) THEN NULL::uuid
-            ELSE le.to_storage_node_id
-        END AS storage_node_id,
-    sn.display_name AS storage_display_name,
-    sn.node_type,
-    sn.scope_id,
-    COALESCE(sn.environment, '{}'::jsonb) AS environment,
-    le.event_type AS last_event_type,
-    le.occurred_at AS last_event_at
-   FROM (latest_event le
-     LEFT JOIN app_provenance.storage_nodes sn ON ((sn.storage_node_id = le.to_storage_node_id)));
+ SELECT rel.child_artefact_id AS artefact_id,
+    rel.parent_artefact_id AS storage_node_id,
+    parent.name AS storage_display_name,
+    COALESCE((parent.metadata ->> 'storage_level'::text), 'sublocation'::text) AS node_type,
+    ( SELECT s.scope_id
+           FROM app_provenance.artefact_scopes s
+          WHERE (s.artefact_id = parent.artefact_id)
+          ORDER BY
+                CASE s.relationship
+                    WHEN 'primary'::text THEN 0
+                    ELSE 1
+                END, s.assigned_at DESC
+         LIMIT 1) AS scope_id,
+    COALESCE((parent.metadata -> 'environment'::text), '{}'::jsonb) AS environment,
+    (rel.metadata ->> 'last_event_type'::text) AS last_event_type,
+    ((rel.metadata ->> 'last_event_at'::text))::timestamp with time zone AS last_event_at
+   FROM (app_provenance.artefact_relationships rel
+     JOIN app_provenance.artefacts parent ON ((parent.artefact_id = rel.parent_artefact_id)))
+  WHERE (rel.relationship_type = 'located_in'::text);
 
 
 --
@@ -3806,13 +3781,22 @@ CREATE VIEW app_core.v_sample_overview AS
 --
 
 CREATE VIEW app_core.v_storage_tree AS
- SELECT facility.storage_node_id AS facility_id,
+ WITH storage_nodes AS (
+         SELECT a.artefact_id AS node_id,
+            a.name AS display_name,
+            at.type_key,
+            COALESCE((a.metadata ->> 'storage_level'::text), 'sublocation'::text) AS node_type
+           FROM (app_provenance.artefacts a
+             JOIN app_provenance.artefact_types at ON ((at.artefact_type_id = a.artefact_type_id)))
+          WHERE (at.type_key = ANY (ARRAY['storage_facility'::text, 'storage_unit'::text, 'storage_sublocation'::text, 'storage_virtual'::text, 'storage_external'::text]))
+        )
+ SELECT facility.node_id AS facility_id,
     facility.display_name AS facility_name,
-    unit.storage_node_id AS unit_id,
+    unit.node_id AS unit_id,
     unit.display_name AS unit_name,
     node.node_type AS storage_type,
         CASE
-            WHEN (node.node_type = 'sublocation'::text) THEN node.storage_node_id
+            WHEN (node.node_type = 'sublocation'::text) THEN node.node_id
             ELSE NULL::uuid
         END AS sublocation_id,
         CASE
@@ -3820,20 +3804,25 @@ CREATE VIEW app_core.v_storage_tree AS
             ELSE NULL::text
         END AS sublocation_name,
         CASE
-            WHEN (node.node_type = 'sublocation'::text) THEN node.parent_storage_node_id
+            WHEN (node.node_type = 'sublocation'::text) THEN ( SELECT r.parent_artefact_id
+               FROM app_provenance.artefact_relationships r
+              WHERE ((r.child_artefact_id = node.node_id) AND (r.relationship_type = 'located_in'::text))
+             LIMIT 1)
             ELSE NULL::uuid
         END AS parent_sublocation_id,
     NULL::integer AS capacity,
-    app_provenance.storage_path(node.storage_node_id) AS storage_path,
+    app_provenance.storage_path(node.node_id) AS storage_path,
     COALESCE(metrics.labware_count, (0)::bigint) AS labware_count,
     COALESCE(metrics.sample_count, (0)::bigint) AS sample_count
-   FROM (((app_provenance.storage_nodes node
-     LEFT JOIN LATERAL ( WITH RECURSIVE descend AS (
-                 SELECT node.storage_node_id
+   FROM (((storage_nodes node
+     LEFT JOIN LATERAL ( WITH RECURSIVE descend(node_id) AS (
+                 SELECT node.node_id
                 UNION ALL
-                 SELECT child.storage_node_id
-                   FROM (app_provenance.storage_nodes child
-                     JOIN descend ON ((child.parent_storage_node_id = descend.storage_node_id)))
+                 SELECT r.child_artefact_id
+                   FROM ((app_provenance.artefact_relationships r
+                     JOIN storage_nodes s ON ((s.node_id = r.child_artefact_id)))
+                     JOIN descend d_1 ON ((d_1.node_id = r.parent_artefact_id)))
+                  WHERE (r.relationship_type = 'located_in'::text)
                 )
          SELECT count(DISTINCT
                 CASE
@@ -3846,60 +3835,57 @@ CREATE VIEW app_core.v_storage_tree AS
                     ELSE NULL::uuid
                 END) AS sample_count
            FROM (((descend d
-             JOIN app_provenance.v_artefact_current_location loc ON ((loc.storage_node_id = d.storage_node_id)))
+             JOIN app_provenance.v_artefact_current_location loc ON ((loc.storage_node_id = d.node_id)))
              JOIN app_provenance.artefacts art ON ((art.artefact_id = loc.artefact_id)))
              JOIN app_provenance.artefact_types at ON ((at.artefact_type_id = art.artefact_type_id)))
           WHERE app_provenance.can_access_artefact(art.artefact_id)) metrics ON (true))
-     LEFT JOIN LATERAL ( WITH RECURSIVE ascend AS (
-                 SELECT node.storage_node_id,
-                    node.parent_storage_node_id,
-                    node.display_name,
-                    node.scope_id,
-                    node.node_type
+     LEFT JOIN LATERAL ( WITH RECURSIVE ascend(node_id, node_type, display_name) AS (
+                 SELECT node.node_id,
+                    node.node_type,
+                    node.display_name
                 UNION ALL
-                 SELECT parent.storage_node_id,
-                    parent.parent_storage_node_id,
-                    parent.display_name,
-                    parent.scope_id,
-                    parent.node_type
-                   FROM (app_provenance.storage_nodes parent
-                     JOIN ascend child ON ((child.parent_storage_node_id = parent.storage_node_id)))
+                 SELECT s.node_id,
+                    s.node_type,
+                    s.display_name
+                   FROM ((app_provenance.artefact_relationships r
+                     JOIN storage_nodes s ON ((s.node_id = r.parent_artefact_id)))
+                     JOIN ascend a ON ((a.node_id = r.child_artefact_id)))
+                  WHERE (r.relationship_type = 'located_in'::text)
                 )
-         SELECT ascend.storage_node_id,
-            ascend.display_name,
-            ascend.scope_id
+         SELECT ascend.node_id,
+            ascend.display_name
            FROM ascend
           WHERE (ascend.node_type = 'facility'::text)
           ORDER BY
                 CASE
-                    WHEN (ascend.storage_node_id = node.storage_node_id) THEN 0
+                    WHEN (ascend.node_id = node.node_id) THEN 0
                     ELSE 1
                 END
-         LIMIT 1) facility(storage_node_id, display_name, scope_id) ON (true))
-     LEFT JOIN LATERAL ( WITH RECURSIVE ascend AS (
-                 SELECT node.storage_node_id,
-                    node.parent_storage_node_id,
-                    node.display_name,
-                    node.node_type
+         LIMIT 1) facility(node_id, display_name) ON (true))
+     LEFT JOIN LATERAL ( WITH RECURSIVE ascend(node_id, node_type, display_name) AS (
+                 SELECT node.node_id,
+                    node.node_type,
+                    node.display_name
                 UNION ALL
-                 SELECT parent.storage_node_id,
-                    parent.parent_storage_node_id,
-                    parent.display_name,
-                    parent.node_type
-                   FROM (app_provenance.storage_nodes parent
-                     JOIN ascend child ON ((child.parent_storage_node_id = parent.storage_node_id)))
+                 SELECT s.node_id,
+                    s.node_type,
+                    s.display_name
+                   FROM ((app_provenance.artefact_relationships r
+                     JOIN storage_nodes s ON ((s.node_id = r.parent_artefact_id)))
+                     JOIN ascend a ON ((a.node_id = r.child_artefact_id)))
+                  WHERE (r.relationship_type = 'located_in'::text)
                 )
-         SELECT ascend.storage_node_id,
+         SELECT ascend.node_id,
             ascend.display_name
            FROM ascend
           WHERE (ascend.node_type = 'unit'::text)
           ORDER BY
                 CASE
-                    WHEN (ascend.storage_node_id = node.storage_node_id) THEN 0
+                    WHEN (ascend.node_id = node.node_id) THEN 0
                     ELSE 1
                 END
-         LIMIT 1) unit(storage_node_id, display_name) ON (true))
-  WHERE ((metrics.labware_count IS NOT NULL) OR (metrics.sample_count IS NOT NULL) OR app_provenance.can_access_storage_node(node.storage_node_id));
+         LIMIT 1) unit(node_id, display_name) ON (true))
+  WHERE ((metrics.labware_count IS NOT NULL) OR (metrics.sample_count IS NOT NULL) OR app_provenance.can_access_storage_node(node.node_id));
 
 
 --
@@ -4283,14 +4269,6 @@ ALTER TABLE ONLY app_provenance.artefact_scopes
 
 
 --
--- Name: artefact_storage_events artefact_storage_events_pkey; Type: CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_pkey PRIMARY KEY (storage_event_id);
-
-
---
 -- Name: artefact_trait_values artefact_trait_values_artefact_id_trait_id_effective_at_key; Type: CONSTRAINT; Schema: app_provenance; Owner: -
 --
 
@@ -4440,30 +4418,6 @@ ALTER TABLE ONLY app_provenance.process_types
 
 ALTER TABLE ONLY app_provenance.process_types
     ADD CONSTRAINT process_types_type_key_key UNIQUE (type_key);
-
-
---
--- Name: storage_nodes storage_nodes_node_key_key; Type: CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_node_key_key UNIQUE (node_key);
-
-
---
--- Name: storage_nodes storage_nodes_parent_storage_node_id_display_name_key; Type: CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_parent_storage_node_id_display_name_key UNIQUE (parent_storage_node_id, display_name);
-
-
---
--- Name: storage_nodes storage_nodes_pkey; Type: CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_pkey PRIMARY KEY (storage_node_id);
 
 
 --
@@ -4668,34 +4622,6 @@ CREATE INDEX idx_relationships_parent ON app_provenance.artefact_relationships U
 
 
 --
--- Name: idx_storage_events_artefact; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_storage_events_artefact ON app_provenance.artefact_storage_events USING btree (artefact_id, occurred_at DESC);
-
-
---
--- Name: idx_storage_events_process; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_storage_events_process ON app_provenance.artefact_storage_events USING btree (process_instance_id);
-
-
---
--- Name: idx_storage_nodes_parent; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_storage_nodes_parent ON app_provenance.storage_nodes USING btree (parent_storage_node_id);
-
-
---
--- Name: idx_storage_nodes_scope; Type: INDEX; Schema: app_provenance; Owner: -
---
-
-CREATE INDEX idx_storage_nodes_scope ON app_provenance.storage_nodes USING btree (scope_id);
-
-
---
 -- Name: idx_trait_values_effective; Type: INDEX; Schema: app_provenance; Owner: -
 --
 
@@ -4822,13 +4748,6 @@ CREATE TRIGGER trg_audit_artefact_scopes AFTER INSERT OR DELETE OR UPDATE ON app
 
 
 --
--- Name: artefact_storage_events trg_audit_artefact_storage_events; Type: TRIGGER; Schema: app_provenance; Owner: -
---
-
-CREATE TRIGGER trg_audit_artefact_storage_events AFTER INSERT OR DELETE OR UPDATE ON app_provenance.artefact_storage_events FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
-
-
---
 -- Name: artefact_trait_values trg_audit_artefact_trait_values; Type: TRIGGER; Schema: app_provenance; Owner: -
 --
 
@@ -4899,13 +4818,6 @@ CREATE TRIGGER trg_audit_process_types AFTER INSERT OR DELETE OR UPDATE ON app_p
 
 
 --
--- Name: storage_nodes trg_audit_storage_nodes; Type: TRIGGER; Schema: app_provenance; Owner: -
---
-
-CREATE TRIGGER trg_audit_storage_nodes AFTER INSERT OR DELETE OR UPDATE ON app_provenance.storage_nodes FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
-
-
---
 -- Name: artefacts trg_enforce_container_membership; Type: TRIGGER; Schema: app_provenance; Owner: -
 --
 
@@ -4952,13 +4864,6 @@ CREATE TRIGGER trg_touch_process_instances BEFORE UPDATE ON app_provenance.proce
 --
 
 CREATE TRIGGER trg_touch_process_types BEFORE UPDATE ON app_provenance.process_types FOR EACH ROW EXECUTE FUNCTION app_security.touch_updated_at();
-
-
---
--- Name: storage_nodes trg_touch_storage_nodes; Type: TRIGGER; Schema: app_provenance; Owner: -
---
-
-CREATE TRIGGER trg_touch_storage_nodes BEFORE UPDATE ON app_provenance.storage_nodes FOR EACH ROW EXECUTE FUNCTION app_security.touch_updated_at();
 
 
 --
@@ -5110,46 +5015,6 @@ ALTER TABLE ONLY app_provenance.artefact_scopes
 
 ALTER TABLE ONLY app_provenance.artefact_scopes
     ADD CONSTRAINT artefact_scopes_scope_id_fkey FOREIGN KEY (scope_id) REFERENCES app_security.scopes(scope_id) ON DELETE CASCADE;
-
-
---
--- Name: artefact_storage_events artefact_storage_events_actor_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES app_core.users(id);
-
-
---
--- Name: artefact_storage_events artefact_storage_events_artefact_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_artefact_id_fkey FOREIGN KEY (artefact_id) REFERENCES app_provenance.artefacts(artefact_id) ON DELETE CASCADE;
-
-
---
--- Name: artefact_storage_events artefact_storage_events_from_storage_node_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_from_storage_node_id_fkey FOREIGN KEY (from_storage_node_id) REFERENCES app_provenance.storage_nodes(storage_node_id) ON DELETE SET NULL;
-
-
---
--- Name: artefact_storage_events artefact_storage_events_process_instance_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_process_instance_id_fkey FOREIGN KEY (process_instance_id) REFERENCES app_provenance.process_instances(process_instance_id) ON DELETE SET NULL;
-
-
---
--- Name: artefact_storage_events artefact_storage_events_to_storage_node_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.artefact_storage_events
-    ADD CONSTRAINT artefact_storage_events_to_storage_node_id_fkey FOREIGN KEY (to_storage_node_id) REFERENCES app_provenance.storage_nodes(storage_node_id) ON DELETE SET NULL;
 
 
 --
@@ -5366,38 +5231,6 @@ ALTER TABLE ONLY app_provenance.process_types
 
 ALTER TABLE ONLY app_provenance.process_types
     ADD CONSTRAINT process_types_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES app_core.users(id);
-
-
---
--- Name: storage_nodes storage_nodes_created_by_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_created_by_fkey FOREIGN KEY (created_by) REFERENCES app_core.users(id);
-
-
---
--- Name: storage_nodes storage_nodes_parent_storage_node_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_parent_storage_node_id_fkey FOREIGN KEY (parent_storage_node_id) REFERENCES app_provenance.storage_nodes(storage_node_id) ON DELETE CASCADE;
-
-
---
--- Name: storage_nodes storage_nodes_scope_id_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_scope_id_fkey FOREIGN KEY (scope_id) REFERENCES app_security.scopes(scope_id) ON DELETE SET NULL;
-
-
---
--- Name: storage_nodes storage_nodes_updated_by_fkey; Type: FK CONSTRAINT; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE ONLY app_provenance.storage_nodes
-    ADD CONSTRAINT storage_nodes_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES app_core.users(id);
 
 
 --
@@ -5635,40 +5468,6 @@ CREATE POLICY artefact_scopes_modify ON app_provenance.artefact_scopes USING ((a
 --
 
 CREATE POLICY artefact_scopes_select ON app_provenance.artefact_scopes FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(artefact_id)));
-
-
---
--- Name: artefact_storage_events; Type: ROW SECURITY; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE app_provenance.artefact_storage_events ENABLE ROW LEVEL SECURITY;
-
---
--- Name: artefact_storage_events artefact_storage_events_delete; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_storage_events_delete ON app_provenance.artefact_storage_events FOR DELETE USING (app_security.has_role('app_admin'::text));
-
-
---
--- Name: artefact_storage_events artefact_storage_events_insert; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_storage_events_insert ON app_provenance.artefact_storage_events FOR INSERT WITH CHECK ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(artefact_id, ARRAY['app_operator'::text, 'app_automation'::text])));
-
-
---
--- Name: artefact_storage_events artefact_storage_events_select; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_storage_events_select ON app_provenance.artefact_storage_events FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_artefact(artefact_id)));
-
-
---
--- Name: artefact_storage_events artefact_storage_events_update; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY artefact_storage_events_update ON app_provenance.artefact_storage_events FOR UPDATE USING (app_security.has_role('app_admin'::text)) WITH CHECK (app_security.has_role('app_admin'::text));
 
 
 --
@@ -5914,26 +5713,6 @@ CREATE POLICY process_types_read ON app_provenance.process_types FOR SELECT USIN
 
 
 --
--- Name: storage_nodes; Type: ROW SECURITY; Schema: app_provenance; Owner: -
---
-
-ALTER TABLE app_provenance.storage_nodes ENABLE ROW LEVEL SECURITY;
-
---
--- Name: storage_nodes storage_nodes_modify; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY storage_nodes_modify ON app_provenance.storage_nodes USING ((app_security.has_role('app_admin'::text) OR app_security.has_role('app_operator'::text))) WITH CHECK ((app_security.has_role('app_admin'::text) OR app_security.has_role('app_operator'::text)));
-
-
---
--- Name: storage_nodes storage_nodes_select; Type: POLICY; Schema: app_provenance; Owner: -
---
-
-CREATE POLICY storage_nodes_select ON app_provenance.storage_nodes FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_provenance.can_access_storage_node(storage_node_id)));
-
-
---
 -- Name: api_clients; Type: ROW SECURITY; Schema: app_security; Owner: -
 --
 
@@ -6064,4 +5843,7 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20251010015200'),
     ('20251010015300'),
     ('20251010015400'),
-    ('20251010016000');
+    ('20251010016000'),
+    ('20251010017000'),
+    ('20251010017100'),
+    ('20251010017200');
