@@ -112,11 +112,22 @@ Development JWTs live under `ops/examples/jwts`:
   ```bash
   AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
   curl -H "$AUTH" http://localhost:6000/users
-  ```
+```
 
 The React UI still targets the legacy sample inventory endpoints and is parked until Phase 2 rebuilds those shapes on top of the new transaction/audit substrate.
 
 PostgREST should call `app_security.pre_request()` (via `db-pre-request`) so that JWT claims populate the shared session metadata consumed by RLS. PostGraphile mirrors the same flow via `pgSettings` and now runs with an owner connection (`postgres://postgres:postgres@db:5432/lims`) so schema changes in `app_core` hot-reload automatically while the authenticator keeps least-privilege access (`POSTGRAPHILE_SCHEMAS=app_core`).
+
+## Notebook Workbench Preview
+
+The `ELN` route in the development console surfaces the new `app_eln` notebook tables end-to-end:
+
+- **Create** notebook entries against the scopes you are entitled to (dataset/project), with RLS-powered scope pickers populated via `app_security.actor_accessible_scopes`.
+- **Capture** notebook content as real `.ipynb` JSON; every save appends a new immutable version row and updates the overview view.
+- **Execute** code cells in-browser via Pyodide for a lightweight JupyterLite-style experience—stdout/error streams are persisted alongside the notebook JSON so results replay with the saved version.
+- **Submit & lock** when finished: the UI drives the underlying status workflow (`draft` → `submitted` → `locked`), and locked entries become read-only unless an administrator reopens them.
+
+This workbench is intentionally self-contained; the API surface (PostgREST/PostGraphile) now exposes the same tables for deeper LIMS integrations or automation flows.
 
 ## Service Accounts & API Tokens
 

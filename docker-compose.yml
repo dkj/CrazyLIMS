@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     environment:
       PGRST_DB_URI: postgres://postgrest_authenticator:postgrestpass@db:5432/lims
-      PGRST_DB_SCHEMAS: "app_core,app_security,app_provenance,public"
+      PGRST_DB_SCHEMAS: "app_core,app_security,app_provenance,app_eln,public"
       PGRST_DB_ANON_ROLE: web_anon
       PGRST_DB_PRE_REQUEST: app_security.pre_request
       PGRST_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
@@ -43,7 +43,7 @@ services:
       - "${POSTGRAPHILE_HOST_PORT:-6001}:3001"
     environment:
       POSTGRAPHILE_DB_URI: postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims
-      POSTGRAPHILE_SCHEMAS: "app_core,app_provenance"
+      POSTGRAPHILE_SCHEMAS: "app_core,app_provenance,app_eln"
       POSTGRAPHILE_DEFAULT_ROLE: web_anon
       POSTGRAPHILE_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
       POSTGRAPHILE_JWT_AUD: "lims-dev"

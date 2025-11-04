@@ -176,3 +176,78 @@ export interface ScopeTransferOverviewRow {
   handover_by: string | null;
   returned_by: string | null;
 }
+
+export interface NotebookEntryOverview {
+  entry_id: string;
+  entry_key: string | null;
+  title: string;
+  description: string | null;
+  status: "draft" | "submitted" | "locked";
+  primary_scope_id: string;
+  primary_scope_key: string | null;
+  primary_scope_name: string | null;
+  metadata: Record<string, unknown> | null;
+  submitted_at: string | null;
+  submitted_by: string | null;
+  locked_at: string | null;
+  locked_by: string | null;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+  latest_version: number | null;
+  latest_version_created_at: string | null;
+  latest_version_created_by: string | null;
+}
+
+export type NotebookCell =
+  | {
+      cell_type: "markdown";
+      metadata?: Record<string, unknown>;
+      source: string[];
+    }
+  | {
+      cell_type: "code";
+      metadata?: Record<string, unknown>;
+      source: string[];
+      execution_count?: number | null;
+      outputs?: NotebookOutput[];
+    };
+
+export interface NotebookOutput {
+  output_type: string;
+  text?: string[] | string;
+  name?: string;
+  ename?: string;
+  evalue?: string;
+  traceback?: string[];
+}
+
+export interface NotebookDocument {
+  cells: NotebookCell[];
+  metadata: Record<string, unknown>;
+  nbformat: number;
+  nbformat_minor: number;
+}
+
+export interface NotebookVersionRow {
+  version_id: string;
+  entry_id: string;
+  version_number: number;
+  notebook_json: NotebookDocument;
+  checksum: string;
+  note: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface AccessibleScopeRow {
+  scope_id: string;
+  scope_key: string;
+  scope_type: string;
+  display_name: string;
+  role_name: string;
+  source_scope_id: string | null;
+  source_role_name: string | null;
+}

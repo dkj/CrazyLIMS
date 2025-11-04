@@ -344,7 +344,7 @@ start_postgraphile() {
   (
     cd "${ROOT_DIR}/ops/postgraphile"
     POSTGRAPHILE_DB_URI="postgres://postgraphile_authenticator:postgraphilepass@${PGHOST}:${PG_PORT}/lims" \
-    POSTGRAPHILE_SCHEMAS="app_core" \
+    POSTGRAPHILE_SCHEMAS="app_core,app_provenance,app_eln" \
     POSTGRAPHILE_DEFAULT_ROLE="web_anon" \
     POSTGRAPHILE_JWT_SECRET="${JWT_SECRET}" \
     POSTGRAPHILE_JWT_AUD="${POSTGRAPHILE_JWT_AUD}" \

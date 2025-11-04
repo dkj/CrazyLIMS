@@ -138,6 +138,31 @@ These views are exposed to the `app_auth` role group so PostgREST/PostGraphile c
 
 ---
 
+## `app_eln` – Notebook Entries & Versions
+
+| Table | Purpose | Highlights |
+| --- | --- | --- |
+| `notebook_entries` | Top-level notebook records anchored to a primary project/dataset scope | `status` workflow (`draft` → `submitted` → `locked`), audit triggers, automatic scope propagation, created/updated actor metadata |
+| `notebook_entry_versions` | Append-only `.ipynb` JSON snapshots | Immutable checksum (`sha256`) for each save, automatic version numbering per entry, append-only enforced by triggers and RLS |
+| `notebook_entry_scopes` | Additional scope associations (witness, supplementary visibility) | Primary scope row inserted automatically, integrates with scope inheritance |
+
+Views & helpers:
+
+- `app_eln.v_notebook_entry_overview` – Joins notebook entries with primary scope metadata and latest version details; used by the UI in read-only mode.
+- `app_eln.can_access_entry(entry_id, required_roles)` – Mirrors the artefact access helper, delegating to scope-based membership checks.
+- `app_eln.can_edit_entry(entry_id, required_roles)` – Ensures the entry is editable (draft or admin override) and that the actor holds appropriate scope membership.
+- `app_security.actor_accessible_scopes(scope_types)` – SECURITY DEFINER helper exposing the caller’s effective scopes (used by the UI to populate the scope selector without relaxing RLS on `app_security.scopes`).
+
+Status transitions are enforced inside `app_eln.tg_enforce_entry_status()`:
+
+- New entries must start in `draft`.
+- Submitting stamps `submitted_at/by` and freezes content until an administrator reopens the entry.
+- Locking (`status = 'locked'`) records an immutable witness timestamp and bars further modification unless an administrator explicitly reopens the draft.
+
+Every write-capable table is protected by row-level security, transaction-context enforcement, and audit triggers, keeping notebook provenance aligned with the rest of the CrazyLIMS security fabric.
+
+---
+
 ## RPCs – Storage Placement
 
 - `app_provenance.sp_set_location(p_move jsonb) → uuid`
