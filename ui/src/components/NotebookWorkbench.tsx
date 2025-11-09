@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent
+} from "react";
 import type {
   AccessibleScopeRow,
   NotebookDocument,
   NotebookEntryOverview,
   NotebookVersionRow
 } from "../types";
-import { NotebookEditor } from "./NotebookEditor";
 
 type NotebookWorkbenchProps = {
   token?: string;
@@ -18,7 +24,7 @@ const STATUS_LABELS: Record<string, string> = {
   locked: "Locked"
 };
 
-const PYODIDE_INDEX_URL = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/";
+const JUPYTERLITE_BASE_PATH = "/eln/lite";
 
 function createInitialNotebook(): NotebookDocument {
   return {
@@ -68,15 +74,24 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
   const [versionError, setVersionError] = useState<string | null>(null);
   const [activeVersionNumber, setActiveVersionNumber] = useState<number | null>(null);
   const [currentNotebook, setCurrentNotebook] = useState<NotebookDocument | null>(null);
-  const [notebookDirty, setNotebookDirty] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [savingVersion, setSavingVersion] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [newEntryTitle, setNewEntryTitle] = useState("");
   const [newEntryDescription, setNewEntryDescription] = useState("");
   const [newEntryScopeId, setNewEntryScopeId] = useState<string | null>(null);
+  const [viewerReady, setViewerReady] = useState(false);
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
+  const viewerIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const pendingNotebookRef = useRef<{
+    entryId: string;
+    versionNumber: number;
+    document: NotebookDocument;
+  } | null>(null);
+
+  const viewerSrc = "/eln/viewer.html";
 
   const datasetScopes = useMemo(
     () =>
@@ -100,7 +115,6 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
     () => (datasetScopes.length > 0 ? datasetScopes : projectScopes),
     [datasetScopes, projectScopes]
   );
-
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.entry_id === selectedEntryId) ?? null,
     [entries, selectedEntryId]
@@ -198,6 +212,7 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
       if (!token || !entryId) {
         setVersions([]);
         setCurrentNotebook(null);
+        setActiveVersionNumber(null);
         setVersionError(null);
         return;
       }
@@ -205,8 +220,8 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
       setVersionsLoading(true);
       setVersionError(null);
       try {
-      const response = await fetch(
-        `${apiBase}/notebook_entry_versions?entry_id=eq.${entryId}&order=version_number.desc`,
+        const response = await fetch(
+          `${apiBase}/notebook_entry_versions?entry_id=eq.${entryId}&order=version_number.desc`,
           {
             headers: authHeaders()
           }
@@ -223,11 +238,9 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
         if (payload.length > 0) {
           setActiveVersionNumber(payload[0].version_number);
           setCurrentNotebook(cloneNotebook(payload[0].notebook_json));
-          setNotebookDirty(false);
         } else {
           setActiveVersionNumber(null);
-          setCurrentNotebook(cloneNotebook(createInitialNotebook()));
-          setNotebookDirty(false);
+          setCurrentNotebook(null);
         }
       } catch (error) {
         console.error(error);
@@ -236,11 +249,45 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
         setVersionError(message);
         setVersions([]);
         setCurrentNotebook(null);
+        setActiveVersionNumber(null);
       } finally {
         setVersionsLoading(false);
       }
     },
     [apiBase, authHeaders, token]
+  );
+
+  const postNotebookToViewer = useCallback(() => {
+    if (!pendingNotebookRef.current) {
+      return;
+    }
+    const iframeWindow = viewerIframeRef.current?.contentWindow;
+    if (!iframeWindow) {
+      return;
+    }
+    const payload = pendingNotebookRef.current;
+    iframeWindow.postMessage(
+      {
+        type: "eln-open-notebook",
+        entryId: payload.entryId,
+        versionNumber: payload.versionNumber,
+        content: payload.document
+      },
+      window.location.origin
+    );
+    pendingNotebookRef.current = null;
+  }, []);
+
+  const publishNotebookToLite = useCallback(
+    (doc: NotebookDocument, entryId: string, versionNumber: number) => {
+      setViewerLoading(true);
+      setViewerError(null);
+      pendingNotebookRef.current = { entryId, versionNumber, document: doc };
+      if (viewerReady) {
+        postNotebookToViewer();
+      }
+    },
+    [postNotebookToViewer, viewerReady]
   );
 
   useEffect(() => {
@@ -254,6 +301,58 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
   useEffect(() => {
     loadVersions(selectedEntryId);
   }, [loadVersions, selectedEntryId]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const data = event.data;
+      if (!data || typeof data !== "object") {
+        return;
+      }
+      if (data.type === "eln-lite-ready") {
+        setViewerReady(true);
+        if (pendingNotebookRef.current) {
+          postNotebookToViewer();
+        }
+        return;
+      }
+
+      if (data.type === "eln-lite-opened") {
+        setViewerLoading(false);
+        setViewerError(null);
+        return;
+      }
+
+      if (data.type === "eln-lite-error") {
+        setViewerLoading(false);
+        setViewerError(
+          data.message ?? "Failed to load notebook in JupyterLite iframe."
+        );
+        return;
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [postNotebookToViewer]);
+
+  useEffect(() => {
+    if (selectedEntryId && currentNotebook && activeVersionNumber !== null) {
+      publishNotebookToLite(currentNotebook, selectedEntryId, activeVersionNumber);
+    } else {
+      pendingNotebookRef.current = null;
+      setViewerError(null);
+      setViewerLoading(false);
+    }
+  }, [selectedEntryId, currentNotebook, activeVersionNumber, publishNotebookToLite]);
+
+  useEffect(() => {
+    if (viewerReady) {
+      postNotebookToViewer();
+    }
+  }, [viewerReady, postNotebookToViewer]);
 
   useEffect(() => {
     if (availableScopes.length === 0) {
@@ -355,52 +454,8 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
   const handleSelectVersion = (version: NotebookVersionRow) => {
     setActiveVersionNumber(version.version_number);
     setCurrentNotebook(cloneNotebook(version.notebook_json));
-    setNotebookDirty(false);
-  };
-
-  const handleNotebookChange = (updated: NotebookDocument) => {
-    setCurrentNotebook(updated);
-    setNotebookDirty(true);
-  };
-
-  const handleSaveVersion = async () => {
-    if (!token || !selectedEntryId || !currentNotebook) {
-      return;
-    }
-
-    setSavingVersion(true);
     setActionMessage(null);
     setActionError(null);
-    try {
-      const response = await fetch(`${apiBase}/notebook_entry_versions`, {
-        method: "POST",
-        headers: authHeaders({
-          "Content-Type": "application/json",
-          Prefer: "return=representation"
-        }),
-        body: JSON.stringify({
-          entry_id: selectedEntryId,
-          note: "Saved from UI",
-          notebook_json: currentNotebook
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
-      setActionMessage("Notebook version saved");
-      setNotebookDirty(false);
-      await loadEntries();
-      await loadVersions(selectedEntryId);
-    } catch (error) {
-      console.error(error);
-      const message =
-        error instanceof Error ? error.message : "Failed to save notebook version";
-      setActionError(message);
-    } finally {
-      setSavingVersion(false);
-    }
   };
 
   const updateStatus = async (status: "draft" | "submitted" | "locked") => {
@@ -441,8 +496,6 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
     }
   };
 
-  const readOnly = selectedEntry ? selectedEntry.status !== "draft" : true;
-
   if (!token) {
     return (
       <div className="notebook-workbench__placeholder">
@@ -457,9 +510,10 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
         <section>
           <h3>Create Notebook</h3>
           <form className="notebook-workbench__form" onSubmit={handleCreateEntry}>
-            <label className="notebook-workbench__label">
+            <label className="notebook-workbench__label" htmlFor="notebook-form-title">
               Title
               <input
+                id="notebook-form-title"
                 className="notebook-workbench__input"
                 type="text"
                 value={newEntryTitle}
@@ -467,9 +521,10 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
                 placeholder="Notebook title"
               />
             </label>
-            <label className="notebook-workbench__label">
+            <label className="notebook-workbench__label" htmlFor="notebook-form-description">
               Description
               <textarea
+                id="notebook-form-description"
                 className="notebook-workbench__textarea"
                 rows={3}
                 value={newEntryDescription}
@@ -477,9 +532,10 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
                 placeholder="Optional description"
               />
             </label>
-            <label className="notebook-workbench__label">
+            <label className="notebook-workbench__label" htmlFor="notebook-form-scope">
               Scope
               <select
+                id="notebook-form-scope"
                 className="notebook-workbench__select"
                 value={newEntryScopeId ?? ""}
                 disabled={availableScopes.length === 0}
@@ -613,14 +669,6 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
                 >
                   Lock Entry
                 </button>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={handleSaveVersion}
-                  disabled={savingVersion || readOnly || !notebookDirty}
-                >
-                  {savingVersion ? "Saving…" : "Save New Version"}
-                </button>
               </div>
             </header>
 
@@ -675,20 +723,32 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
                 </ul>
               </aside>
 
-              <div className="notebook-workbench__editor">
-                {currentNotebook ? (
-                  <NotebookEditor
-                    notebook={currentNotebook}
-                    onChange={handleNotebookChange}
-                    onDirtyChange={setNotebookDirty}
-                    readOnly={readOnly}
-                    pyodideIndexUrl={PYODIDE_INDEX_URL}
-                  />
-                ) : (
+              <div className="notebook-workbench__viewer">
+                {viewerError ? (
+                  <p className="notebook-workbench__error notebook-workbench__error--inline">
+                    {viewerError}
+                  </p>
+                ) : viewerLoading ? (
+                  <div className="notebook-workbench__placeholder">
+                    Preparing notebook in JupyterLite…
+                  </div>
+                ) : !viewerReady ? (
+                  <div className="notebook-workbench__placeholder">
+                    Loading embedded JupyterLite workspace…
+                  </div>
+                ) : !selectedEntry ? (
                   <div className="notebook-workbench__placeholder">
                     Select a version to view the notebook contents.
                   </div>
-                )}
+                ) : null}
+                <iframe
+                  title="JupyterLite notebook"
+                  className="notebook-viewer__frame"
+                  src={viewerSrc}
+                  allow="clipboard-read; clipboard-write"
+                  ref={viewerIframeRef}
+                  data-testid="jupyterlite-frame"
+                />
               </div>
             </div>
           </>

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test jupyterlite/vendor
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -225,7 +225,7 @@ ifeq ($(USE_DOCKER),yes)
 ui/install:
 	docker compose run --rm --no-deps ui npm ci
 
-test/ui: ui/install
+test/ui: ui/install jupyterlite/vendor
 	docker compose run --rm --no-deps ui npm run test:ui
 else
 ui/install:
@@ -234,6 +234,9 @@ ui/install:
 test/ui:
 	@echo "Skipping UI Playwright tests (Docker disabled or unavailable)."
 endif
+
+jupyterlite/vendor:
+	./scripts/jupyterlite_vendor.sh
 
 ifeq ($(USE_DOCKER),yes)
 test/security:

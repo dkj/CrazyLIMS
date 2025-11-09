@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>JupyterLite Embed Smoke Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.15);
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+
+      header p {
+        margin: 0.35rem 0 0;
+        color: #94a3b8;
+        font-size: 0.95rem;
+      }
+
+      iframe {
+        width: 100%;
+        height: calc(100% - 92px);
+        border: none;
+        background: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Embedded JupyterLite</h1>
+      <p>This iframe points at the locally vendored JupyterLite build under <code>/eln/lite</code>.</p>
+    </header>
+    <iframe
+      title="JupyterLite"
+      src="/eln/lite/repl/index.html?toolbar=1&kernel=python&theme=JupyterLab%20Dark"
+      allow="clipboard-read; clipboard-write"
+    ></iframe>
+  </body>
+</html>

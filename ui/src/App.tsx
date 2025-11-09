@@ -13,6 +13,7 @@ import type { Column } from "./components/DataTable";
 import { SampleProvenanceExplorer } from "./components/SampleProvenanceExplorer";
 import { StorageExplorer } from "./components/StorageExplorer";
 import { NotebookWorkbench } from "./components/NotebookWorkbench";
+import { NotebookIframeDemo } from "./components/NotebookIframeDemo";
 import type {
   SampleOverviewRow,
   LabwareContentRow,
@@ -672,6 +673,11 @@ const navigateToSampleIfVisible = useCallback(
           apiBase={API_BASE}
         />
       )
+    },
+    {
+      path: "/eln/embed-test",
+      label: "ELN Demo",
+      element: <NotebookIframeDemo />
     },
     { path: "/samples", label: "Samples", element: samplesSection },
     {

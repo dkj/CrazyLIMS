@@ -124,10 +124,26 @@ The `ELN` route in the development console surfaces the new `app_eln` notebook t
 
 - **Create** notebook entries against the scopes you are entitled to (dataset/project), with RLS-powered scope pickers populated via `app_security.actor_accessible_scopes`.
 - **Capture** notebook content as real `.ipynb` JSON; every save appends a new immutable version row and updates the overview view.
-- **Execute** code cells in-browser via Pyodide for a lightweight JupyterLite-style experience—stdout/error streams are persisted alongside the notebook JSON so results replay with the saved version.
+- **Review & run** notebook versions inside an embedded JupyterLite REPL (Pyodide-powered). The console syncs each saved notebook into a local JupyterLite bundle that runs fully in the browser while PostgREST stores the immutable JSON.
 - **Submit & lock** when finished: the UI drives the underlying status workflow (`draft` → `submitted` → `locked`), and locked entries become read-only unless an administrator reopens them.
 
+If you need to experiment with the raw JupyterLite app outside the main console, open `/plain-jupyterlite.html` (hosted under `ui/public/`) or the `/eln/embed-test` route in the dev UI, which renders the same embed using a canned sample notebook.
+
 This workbench is intentionally self-contained; the API surface (PostgREST/PostGraphile) now exposes the same tables for deeper LIMS integrations or automation flows.
+
+### Refreshing the embedded JupyterLite build
+
+The ELN UI relies on a local JupyterLite bundle so notebook execution happens entirely in the browser,
+without shipping large upstream assets in the repository. Run the following whenever you need to
+refresh the embedded Lab/Pyodide bits (or after cloning the repo):
+
+```bash
+make jupyterlite/vendor
+```
+
+The helper script downloads the pinned JupyterLite toolchain into `.cache/jupyterlite/`, builds the
+Lab/Notebook/REPL apps, and drops the static files under `ui/public/eln/lite/` (git-ignored).
+`make test/ui` depends on this target automatically.
 
 ## Service Accounts & API Tokens
 

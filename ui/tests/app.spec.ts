@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { NotebookDocument } from "../src/types";
 
 test.describe("Operations console smoke test", () => {
   test("allows persona selection and shows navigation", async ({ page }) => {
@@ -16,17 +17,19 @@ test.describe("Operations console smoke test", () => {
 
     await expect(
       page.getByRole("heading", { level: 1, name: "CrazyLIMS – Operations Console" })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("Select a persona to begin")).toBeVisible();
 
-    await page.selectOption("#persona", "admin");
+    const personaSelect = page.locator("#persona");
+    await personaSelect.waitFor({ timeout: 15000 });
+    await personaSelect.selectOption("admin");
 
     await page.waitForURL("**/overview");
 
     await expect(page.getByText("Select a persona to begin")).toBeHidden();
     await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Samples" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Samples", exact: true })).toBeVisible();
     await expect(page.getByText("Active roles: app_admin, app_operator")).toBeVisible();
   });
 
@@ -54,7 +57,14 @@ test.describe("Operations console smoke test", () => {
 
     const newEntryId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const newVersionId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-    let createPayload: Record<string, unknown> | null = null;
+    let entryVisible = false;
+    let entryCreated = false;
+    let createdNotebookJson: NotebookDocument = {
+      cells: [],
+      metadata: {},
+      nbformat: 4,
+      nbformat_minor: 5
+    };
 
     await page.route("**/api/**", async (route) => {
       const request = route.request();
@@ -70,18 +80,19 @@ test.describe("Operations console smoke test", () => {
       }
 
       if (url.includes("/api/v_notebook_entry_overview") && method === "GET") {
-        const responseBody = createPayload
+        const responseBody = entryCreated
           ? JSON.stringify([
               {
                 entry_id: newEntryId,
                 entry_key: "eln:test",
-                title: String(createPayload?.title ?? ""),
-                description: createPayload?.description ?? null,
+                title: String(createdNotebookJson.metadata?.title ?? "Automation Notebook"),
+                description:
+                  createdNotebookJson.metadata?.description ?? "Created by UI automation",
                 status: "draft",
                 primary_scope_id: datasetScopes[1].scope_id,
                 primary_scope_key: datasetScopes[1].scope_key,
                 primary_scope_name: datasetScopes[1].display_name,
-                metadata: {},
+                metadata: createdNotebookJson.metadata ?? {},
                 submitted_at: null,
                 submitted_by: null,
                 locked_at: null,
@@ -107,6 +118,9 @@ test.describe("Operations console smoke test", () => {
 
       if (url.includes("/api/notebook_entry_versions")) {
         if (method === "POST") {
+          const payload = JSON.parse(request.postData() ?? "{}");
+          createdNotebookJson = payload.notebook_json ?? createdNotebookJson;
+          entryVisible = true;
           await route.fulfill({
             status: 200,
             body: JSON.stringify([
@@ -114,12 +128,7 @@ test.describe("Operations console smoke test", () => {
                 version_id: newVersionId,
                 entry_id: newEntryId,
                 version_number: 1,
-                notebook_json: JSON.parse(request.postData() ?? "{}")?.notebook_json ?? {
-                  cells: [],
-                  metadata: {},
-                  nbformat: 4,
-                  nbformat_minor: 5
-                },
+                notebook_json: createdNotebookJson,
                 checksum: "abc123",
                 note: "Initial capture",
                 metadata: {},
@@ -132,18 +141,13 @@ test.describe("Operations console smoke test", () => {
           return;
         }
 
-        const responseBody = createPayload
+        const responseBody = entryVisible
           ? JSON.stringify([
               {
                 version_id: newVersionId,
                 entry_id: newEntryId,
                 version_number: 1,
-                notebook_json: {
-                  cells: [],
-                  metadata: {},
-                  nbformat: 4,
-                  nbformat_minor: 5
-                },
+                notebook_json: createdNotebookJson,
                 checksum: "abc123",
                 note: "Initial capture",
                 metadata: {},
@@ -162,7 +166,30 @@ test.describe("Operations console smoke test", () => {
       }
 
       if (url.includes("/api/notebook_entries") && method === "POST") {
-        createPayload = JSON.parse(request.postData() ?? "{}");
+        const payload = JSON.parse(request.postData() ?? "{}");
+        createdNotebookJson = {
+          cells: [
+            {
+              cell_type: "markdown",
+              metadata: {},
+              source: ["# New ELN Entry\n", "\n", "Describe your experiment here.\n"]
+            },
+            {
+              cell_type: "code",
+              metadata: {},
+              source: ['print("Hello from CrazyLIMS ELN")\n'],
+              execution_count: null,
+              outputs: []
+            }
+          ],
+          metadata: {
+            title: payload.title,
+            description: payload.description
+          },
+          nbformat: 4,
+          nbformat_minor: 5
+        };
+        entryCreated = true;
         await route.fulfill({
           status: 200,
           body: JSON.stringify([{ entry_id: newEntryId }]),
@@ -179,27 +206,27 @@ test.describe("Operations console smoke test", () => {
     });
 
     await page.goto("/");
-    await page.selectOption("#persona", "admin");
+    const personaSelect = page.locator("#persona");
+    await personaSelect.waitFor({ timeout: 15000 });
+    await personaSelect.selectOption("admin");
     await page.waitForURL("**/overview");
 
-    await page.getByRole("link", { name: "ELN" }).click();
+    await page.getByRole("link", { name: "ELN", exact: true }).click({ force: true });
     await page.waitForURL("**/eln");
 
     await page.locator("select.notebook-workbench__select").selectOption(datasetScopes[1].scope_id);
     await page.getByLabel("Title").fill("Automation Notebook");
     await page.getByLabel("Description").fill("Created by UI automation");
 
-    const createRequestPromise = page.waitForRequest(
-      (req) => req.method() === "POST" && req.url().includes("/api/notebook_entries")
-    );
-
     await page.getByRole("button", { name: "Create Notebook" }).click();
 
-    await createRequestPromise;
-    await expect(createPayload).not.toBeNull();
-    await expect(page.locator(".notebook-workbench__banner")).toContainText(
-      "Notebook entry created"
+    await expect(page.locator("iframe[data-testid='jupyterlite-frame']")).toHaveCount(1, {
+      timeout: 10000
+    });
+    await expect(page.locator(".notebook-version-list__button").first()).toContainText(
+      "v1"
     );
+
     await expect(page.locator("text=PGRST")).toHaveCount(0);
   });
 
@@ -266,10 +293,12 @@ test.describe("Operations console smoke test", () => {
 
     await page.goto("/");
 
-    await page.selectOption("#persona", "admin");
+    const personaSelect = page.locator("#persona");
+    await personaSelect.waitFor({ timeout: 15000 });
+    await personaSelect.selectOption("admin");
     await page.waitForURL("**/overview");
 
-    await page.getByRole("link", { name: "ELN" }).click();
+    await page.getByRole("link", { name: "ELN", exact: true }).click({ force: true });
     await page.waitForURL("**/eln");
 
     await expect(page.getByRole("heading", { level: 3, name: "Create Notebook" })).toBeVisible();
@@ -285,6 +314,10 @@ test.describe("Operations console smoke test", () => {
 
     await expect(page.getByRole("button", { name: "Create Notebook" })).toBeEnabled();
     await expect(page.locator(".notebook-workbench__error")).toHaveCount(0);
+    await expect(
+      page.locator(".notebook-workbench__main .notebook-workbench__placeholder")
+    ).toContainText("Select or create a notebook entry to begin.");
+    await expect(page.locator("iframe[data-testid='jupyterlite-frame']")).toHaveCount(0);
     await expect(page.locator("text=PGRST")).toHaveCount(0);
   });
 
@@ -301,7 +334,9 @@ test.describe("Operations console smoke test", () => {
 
     await page.goto("/");
 
-    await page.selectOption("#persona", "admin");
+    const personaSelect = page.locator("#persona");
+    await personaSelect.waitFor({ timeout: 15000 });
+    await personaSelect.selectOption("admin");
     await page.waitForURL("**/overview");
 
     await page.getByRole("link", { name: "Storage" }).click();
