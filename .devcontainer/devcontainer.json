@@ -5,7 +5,8 @@
   "workspaceFolder": "/workspace",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {},
-    "ghcr.io/devcontainers/features/docker-outside-of-docker": {}
+    "ghcr.io/devcontainers/features/docker-outside-of-docker": {},
+    "ghcr.io/devcontainers/features/python:1": {}
   },
   "containerEnv": {
     "COMPOSE_PROJECT_NAME": "crazylims",
