@@ -91,9 +91,9 @@ BEGIN
         ),
         'metadata', jsonb_build_object(
           'kernelspec', jsonb_build_object(
-            'display_name','Python 3 (Pyodide)',
+            'display_name','Python (Pyodide)',
             'language','python',
-            'name','python3'
+            'name','python'
           ),
           'language_info', jsonb_build_object(
             'name','python',

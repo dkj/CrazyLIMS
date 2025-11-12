@@ -26,8 +26,31 @@ const STATUS_LABELS: Record<string, string> = {
 
 const JUPYTERLITE_BASE_PATH = "/eln/lite";
 
+type KernelSpecMetadata = {
+  display_name?: string;
+  language?: string;
+  name?: string;
+  [key: string]: unknown;
+};
+
+type LanguageInfoMetadata = {
+  name?: string;
+  [key: string]: unknown;
+};
+
+type NotebookMetadata = Record<string, unknown> & {
+  kernelspec?: KernelSpecMetadata;
+  language_info?: LanguageInfoMetadata;
+};
+
+const PYODIDE_KERNELSPEC = {
+  display_name: "Python (Pyodide)",
+  language: "python",
+  name: "python"
+} as const;
+
 function createInitialNotebook(): NotebookDocument {
-  return {
+  return normalizeNotebook({
     cells: [
       {
         cell_type: "markdown",
@@ -44,9 +67,7 @@ function createInitialNotebook(): NotebookDocument {
     ],
     metadata: {
       kernelspec: {
-        display_name: "Python 3 (Pyodide)",
-        language: "python",
-        name: "python3"
+        ...PYODIDE_KERNELSPEC
       },
       language_info: {
         name: "python",
@@ -55,11 +76,41 @@ function createInitialNotebook(): NotebookDocument {
     },
     nbformat: 4,
     nbformat_minor: 5
-  };
+  });
 }
 
 function cloneNotebook(doc: NotebookDocument): NotebookDocument {
   return JSON.parse(JSON.stringify(doc));
+}
+
+function normalizeNotebook(doc: NotebookDocument): NotebookDocument {
+  const notebook = cloneNotebook(doc);
+  const metadata = {
+    ...(typeof notebook.metadata === "object" && notebook.metadata !== null
+      ? notebook.metadata
+      : {})
+  } as NotebookMetadata;
+
+  const kernelspec = metadata.kernelspec;
+  if (
+    !kernelspec ||
+    kernelspec.name !== PYODIDE_KERNELSPEC.name ||
+    kernelspec.display_name !== PYODIDE_KERNELSPEC.display_name ||
+    kernelspec.language !== PYODIDE_KERNELSPEC.language
+  ) {
+    metadata.kernelspec = { ...PYODIDE_KERNELSPEC };
+  }
+
+  const languageInfo = metadata.language_info;
+  if (!languageInfo || languageInfo.name !== "python") {
+    metadata.language_info = {
+      ...(languageInfo ?? {}),
+      name: "python"
+    };
+  }
+
+  notebook.metadata = metadata;
+  return notebook;
 }
 
 export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
@@ -237,7 +288,7 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
 
         if (payload.length > 0) {
           setActiveVersionNumber(payload[0].version_number);
-          setCurrentNotebook(cloneNotebook(payload[0].notebook_json));
+          setCurrentNotebook(normalizeNotebook(payload[0].notebook_json));
         } else {
           setActiveVersionNumber(null);
           setCurrentNotebook(null);
@@ -453,7 +504,7 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
 
   const handleSelectVersion = (version: NotebookVersionRow) => {
     setActiveVersionNumber(version.version_number);
-    setCurrentNotebook(cloneNotebook(version.notebook_json));
+    setCurrentNotebook(normalizeNotebook(version.notebook_json));
     setActionMessage(null);
     setActionError(null);
   };

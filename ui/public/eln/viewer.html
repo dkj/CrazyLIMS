@@ -30,6 +30,7 @@
     <script>
       const liteFrame = document.getElementById("lite-frame");
       let liteWindow = null;
+      const PYODIDE_KERNEL_NAME = "python";
 
       liteFrame.addEventListener("load", () => {
         liteWindow = liteFrame.contentWindow;
@@ -68,10 +69,14 @@
             format: "json",
             content
           });
-          await app.commands.execute("docmanager:open", {
+          const widget = await app.commands.execute("docmanager:open", {
             path: filename,
-            factory: "Notebook"
+            factory: "Notebook",
+            kernel: { name: PYODIDE_KERNEL_NAME }
           });
+          const sessionContext = widget?.context?.sessionContext;
+          await ensurePyodideKernel(sessionContext);
+          await waitForKernelIdle(sessionContext);
           window.parent.postMessage(
             { type: "eln-lite-opened", entryId, versionNumber },
             window.location.origin
@@ -89,6 +94,40 @@
             window.location.origin
           );
         }
+      }
+
+      async function ensurePyodideKernel(sessionContext) {
+        if (!sessionContext) {
+          return;
+        }
+        try {
+          await sessionContext.initialize();
+          let kernelName =
+            sessionContext.session?.kernel?.name ??
+            sessionContext.session?.kernel?.model?.name ??
+            null;
+          if (kernelName !== PYODIDE_KERNEL_NAME) {
+            await sessionContext.changeKernel({ name: PYODIDE_KERNEL_NAME });
+          }
+          await sessionContext.ready;
+        } catch (error) {
+          console.warn("Failed to enforce Pyodide kernel", error);
+        }
+      }
+
+      async function waitForKernelIdle(sessionContext) {
+        if (!sessionContext) {
+          return;
+        }
+        const start = Date.now();
+        while (Date.now() - start < 20000) {
+          const kernel = sessionContext.session?.kernel ?? null;
+          if (kernel && kernel.status === "idle") {
+            return;
+          }
+          await sleep(200);
+        }
+        console.warn("Pyodide kernel did not reach idle state before timeout");
       }
 
       window.addEventListener("message", (event) => {

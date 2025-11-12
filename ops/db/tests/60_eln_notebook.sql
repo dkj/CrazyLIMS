@@ -78,7 +78,11 @@ BEGIN
         )
       ),
       'metadata', jsonb_build_object(
-        'kernelspec', jsonb_build_object('name','python3')
+        'kernelspec', jsonb_build_object(
+          'display_name','Python (Pyodide)',
+          'language','python',
+          'name','python'
+        )
       ),
       'nbformat', 4,
       'nbformat_minor', 5
@@ -104,7 +108,11 @@ BEGIN
         )
       ),
       'metadata', jsonb_build_object(
-        'kernelspec', jsonb_build_object('name','python3')
+        'kernelspec', jsonb_build_object(
+          'display_name','Python (Pyodide)',
+          'language','python',
+          'name','python'
+        )
       ),
       'nbformat', 4,
       'nbformat_minor', 5
