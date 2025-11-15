@@ -80,3 +80,8 @@
 ## 8. Future LIMS Integration
 
 The **ELN remains notebook-first**, while the **system of record is the PostgreSQL database** with strong contracts, RBAC/RLS, and APIs—preparing for expansion into Samples, Inventory, Scheduling, and Instruments.
+
+## 9. Validation & Testing
+
+- `make test/ui` now runs the Playwright suite against mocked PostgREST responses to exercise the embedded JupyterLite launcher, notebook creation form, and viewer plumbing without needing a database.
+- A new full-stack Playwright spec (`ui/tests/eln.fullstack.spec.ts`) targets the real PostgREST slice. Set `RUN_FULL_ELN_E2E=true` and point `FULL_ELN_POSTGREST_URL` at a running PostgREST instance (with JWTs in `public/tokens/`) to insert a live ELN entry, load it through the UI, and execute Pyodide code inside the embedded notebook—verifying DB ↔ REST ↔ UI ↔ JupyterLite end-to-end.
