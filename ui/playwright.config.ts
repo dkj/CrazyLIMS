@@ -8,6 +8,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"]],
+  workers: Number(process.env.PLAYWRIGHT_WORKERS ?? 1),
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: "on-first-retry"
