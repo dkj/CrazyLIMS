@@ -9,7 +9,7 @@ import {
   waitForLiteKernelIdle
 } from "./helpers/jupyterlite";
 
-const RUN_FULL_STACK = process.env.RUN_FULL_ELN_E2E === "true";
+const RUN_FULL_STACK = process.env.RUN_FULL_ELN_E2E !== "false";
 const POSTGREST_URL =
   process.env.FULL_ELN_POSTGREST_URL ?? "http://localhost:7100";
 const ADMIN_TOKEN_PATH =
@@ -135,7 +135,7 @@ async function cleanupNotebookEntry(token: string, entryId: string) {
 test.describe("ELN full-stack integration", () => {
   test.skip(
     !RUN_FULL_STACK,
-    "Set RUN_FULL_ELN_E2E=true to enable full-stack ELN validation."
+    "Set RUN_FULL_ELN_E2E=false to skip the full-stack ELN validation."
   );
 
   test("streams database-backed notebooks into the embedded viewer", async ({ page }) => {

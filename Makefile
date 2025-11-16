@@ -69,6 +69,13 @@ RBAC_TEST_SCRIPT := scripts/test_rbac.sh
 REST_STORY_TEST_SCRIPT := scripts/test_rest_story.sh
 JWT_PUBLIC_DIR := ui/public/tokens
 POSTGREST_CONTRACT_JWT ?= $(JWT_DIR)/admin.jwt
+RUN_FULL_ELN_E2E ?= true
+
+ifeq ($(USE_DOCKER),yes)
+FULL_ELN_POSTGREST_URL ?= http://postgrest:3000
+else
+FULL_ELN_POSTGREST_URL ?= http://$(POSTGREST_HOST):$(POSTGREST_PORT)
+endif
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -226,13 +233,22 @@ ui/install:
 	docker compose run --rm --no-deps ui npm ci
 
 test/ui: ui/install jupyterlite/vendor
-	docker compose run --rm --no-deps ui npm run test:ui
+	docker compose run --rm --no-deps \
+		-e RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
+		-e FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
+		ui npm run test:ui
 else
 ui/install:
-	@echo "Skipping UI dependency install (Docker disabled or unavailable)."
+	cd ui && npm ci
 
 test/ui:
-	@echo "Skipping UI Playwright tests (Docker disabled or unavailable)."
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
+	$(MAKE) db-wait >/dev/null
+	$(MAKE) jwt/dev >/dev/null
+	$(MAKE) jupyterlite/vendor >/dev/null
+	cd ui && RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
+		FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
+		npm run test:ui
 endif
 
 jupyterlite/vendor:

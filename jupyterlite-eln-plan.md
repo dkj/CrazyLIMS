@@ -84,4 +84,4 @@ The **ELN remains notebook-first**, while the **system of record is the PostgreS
 ## 9. Validation & Testing
 
 - `make test/ui` now runs the Playwright suite against mocked PostgREST responses to exercise the embedded JupyterLite launcher, notebook creation form, and viewer plumbing without needing a database.
-- A new full-stack Playwright spec (`ui/tests/eln.fullstack.spec.ts`) targets the real PostgREST slice. Set `RUN_FULL_ELN_E2E=true` and point `FULL_ELN_POSTGREST_URL` at a running PostgREST instance (with JWTs in `public/tokens/`) to insert a live ELN entry, load it through the UI, and execute Pyodide code inside the embedded notebook—verifying DB ↔ REST ↔ UI ↔ JupyterLite end-to-end.
+- A new full-stack Playwright spec (`ui/tests/eln.fullstack.spec.ts`) now runs by default through `make test/ui`, hitting the live PostgREST stack (docker uses `http://postgrest:3000`, local codex uses `http://localhost:7100`). Set `RUN_FULL_ELN_E2E=false` if you need to skip it, or override `FULL_ELN_POSTGREST_URL`/`FULL_ELN_ADMIN_TOKEN_PATH` to point at different services before inserting a live ELN entry, loading it via the UI, and executing Pyodide code end-to-end.
