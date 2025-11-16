@@ -5,7 +5,7 @@ const browserBase = process.env.VITE_POSTGREST_BROWSER_BASE ?? "/api";
 const proxyTarget =
   process.env.VITE_POSTGREST_SERVER_TARGET ??
   process.env.VITE_POSTGREST_URL ??
-  "http://localhost:6000";
+  "http://localhost:7100";
 
 export default defineConfig({
   plugins: [react()],

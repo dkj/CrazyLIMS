@@ -11,7 +11,7 @@ import {
 
 const RUN_FULL_STACK = process.env.RUN_FULL_ELN_E2E === "true";
 const POSTGREST_URL =
-  process.env.FULL_ELN_POSTGREST_URL ?? "http://localhost:6000";
+  process.env.FULL_ELN_POSTGREST_URL ?? "http://localhost:7100";
 const ADMIN_TOKEN_PATH =
   process.env.FULL_ELN_ADMIN_TOKEN_PATH ??
   path.resolve(process.cwd(), "public/tokens/admin.jwt");

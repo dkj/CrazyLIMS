@@ -25,13 +25,13 @@ services:
       PGRST_DB_ANON_ROLE: web_anon
       PGRST_DB_PRE_REQUEST: app_security.pre_request
       PGRST_JWT_SECRET: "dev_jwt_secret_change_me_which_is_at_least_32_characters"
-      PGRST_OPENAPI_SERVER_PROXY_URI: "http://localhost:${POSTGREST_HOST_PORT:-6000}"
+      PGRST_OPENAPI_SERVER_PROXY_URI: "http://localhost:${POSTGREST_HOST_PORT:-7100}"
       PGRST_OPENAPI_MODE: "ignore-privileges"
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "${POSTGREST_HOST_PORT:-6000}:3000"
+      - "${POSTGREST_HOST_PORT:-7100}:3000"
 
   postgraphile:
     build:
@@ -40,7 +40,7 @@ services:
     depends_on:
       - db
     ports:
-      - "${POSTGRAPHILE_HOST_PORT:-6001}:3001"
+      - "${POSTGRAPHILE_HOST_PORT:-7101}:3001"
     environment:
       POSTGRAPHILE_DB_URI: postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims
       POSTGRAPHILE_SCHEMAS: "app_core,app_provenance,app_eln"

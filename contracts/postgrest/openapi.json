@@ -5,7 +5,7 @@
     "title": "PostgREST API",
     "version": "13.0.7"
   },
-  "host": "localhost:6000",
+  "host": "127.0.0.1:7100",
   "basePath": "/",
   "schemes": [
     "http"
@@ -8351,7 +8351,6 @@
     "v_sample_lineage": {
       "properties": {
         "parent_sample_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8401,6 +8400,7 @@
           "type": "string"
         },
         "child_labware_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8547,7 +8547,6 @@
       "description": "@omit",
       "properties": {
         "entry_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8568,7 +8567,6 @@
           "type": "string"
         },
         "primary_scope_id": {
-          "description": "Note:\nThis is a Foreign Key to `v_sample_lineage.child_project_id`.<fk table='v_sample_lineage' column='child_project_id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8588,7 +8586,6 @@
           "type": "string"
         },
         "submitted_by": {
-          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8597,7 +8594,6 @@
           "type": "string"
         },
         "locked_by": {
-          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8606,7 +8602,6 @@
           "type": "string"
         },
         "created_by": {
-          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8615,7 +8610,6 @@
           "type": "string"
         },
         "updated_by": {
-          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
           "format": "uuid",
           "type": "string"
         },
@@ -8628,7 +8622,6 @@
           "type": "string"
         },
         "latest_version_created_by": {
-          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
           "format": "uuid",
           "type": "string"
         }

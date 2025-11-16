@@ -66,7 +66,7 @@ Additional helper commands (the Make targets above will start/stop services as n
 
 See `Makefile` for additional helper targets (logs, psql shell, etc.).
 
-PostgREST listens on host port **6000** and PostGraphile on **6001** by default to avoid conflicts in Codespaces and other devcontainer hosts. Override the published ports by setting `POSTGREST_HOST_PORT` / `POSTGRAPHILE_HOST_PORT` before running Docker Compose or `make` (e.g. `POSTGREST_HOST_PORT=7000 make up`).
+PostgREST listens on host port **7100** and PostGraphile on **7101** by default to avoid conflicts in Codespaces and other devcontainer hosts (and to steer clear of the WHATWG "bad ports" blocked by browsers/fetch while also dodging macOS AirPlay/AirTunes, which binds to 7000). Override the published ports by setting `POSTGREST_HOST_PORT` / `POSTGRAPHILE_HOST_PORT` before running Docker Compose or `make` (e.g. `POSTGREST_HOST_PORT=7500 make up`).
 
 ## Migration Workflow
 
@@ -111,7 +111,7 @@ Development JWTs live under `ops/examples/jwts`:
 - Example usage:
   ```bash
   AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
-  curl -H "$AUTH" http://localhost:6000/users
+  curl -H "$AUTH" http://localhost:7100/users
 ```
 
 The React UI still targets the legacy sample inventory endpoints and is parked until Phase 2 rebuilds those shapes on top of the new transaction/audit substrate.
