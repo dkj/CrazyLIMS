@@ -34,6 +34,9 @@ When Docker cannot be used (e.g. Codespaces-lite/Codex sandboxes), the `scripts/
 # initialize the local toolchain (installs PostgreSQL via apt-get when missing)
 ./scripts/local_dev.sh start
 
+# install UI dependencies + Playwright browsers when running tests outside Docker
+make ui/install
+
 # apply migrations / run checks via Make targets as usual
 make db/migrate
 make db/test      # automatically starts the helper and waits for PostgreSQL
@@ -60,7 +63,7 @@ Additional helper commands (the Make targets above will start/stop services as n
 | `make db/test` | Run SQL regression checks (transaction contexts, audit hooks, RLS). |
 | `make contracts/export` | Regenerate OpenAPI (PostgREST) and GraphQL schema snapshots. |
 | `make test/security` | Execute CLI smoke tests that exercise the transaction helpers. |
-| `make test/ui` | Run the Playwright smoke suite inside the `ui` container (skipped when Docker is unavailable). |
+| `make test/ui` | Run the Playwright smoke suite. When Docker is unavailable, `make ui/install` bootstraps npm deps + browsers locally. |
 | `make ci` | Orchestrates reset → db tests → contract export → RBAC + UI smoke tests. |
 | `make ui/dev` | Launch the read-only React console (served on http://localhost:5173). |
 
@@ -127,7 +130,7 @@ The `ELN` route in the development console surfaces the new `app_eln` notebook t
 - **Review & run** notebook versions inside an embedded JupyterLite REPL (Pyodide-powered). The console syncs each saved notebook into a local JupyterLite bundle that runs fully in the browser while PostgREST stores the immutable JSON.
 - **Submit & lock** when finished: the UI drives the underlying status workflow (`draft` → `submitted` → `locked`), and locked entries become read-only unless an administrator reopens them.
 
-If you need to experiment with the raw JupyterLite app outside the main console, open `/plain-jupyterlite.html` (hosted under `ui/public/`) or the `/eln/embed-test` route in the dev UI, which renders the same embed using a canned sample notebook.
+If you need to experiment with the raw JupyterLite app outside the main console, open `/plain-jupyterlite.html` (hosted under `ui/public/`) or the `/eln/embed-test` route in the dev UI, which renders the same embed using a canned sample notebook. A minimal `/pyodide-smoke.html` page is also available for verifying that the browser (and Playwright) can load the upstream Pyodide runtime without relying on the heavier embedded bundle.
 
 This workbench is intentionally self-contained; the API surface (PostgREST/PostGraphile) now exposes the same tables for deeper LIMS integrations or automation flows.
 
@@ -144,6 +147,10 @@ make jupyterlite/vendor
 The helper script downloads the pinned JupyterLite toolchain into `.cache/jupyterlite/`, builds the
 Lab/Notebook/REPL apps, and drops the static files under `ui/public/eln/lite/` (git-ignored).
 `make test/ui` depends on this target automatically.
+
+To keep Pyodide working in headless Codex/Codespaces-style environments, the vendor step also mirrors
+the upstream Pyodide release into `ui/public/eln/lite/pyodide/` and points JupyterLite at the local
+copy, eliminating the need for browsers to talk to jsDelivr.
 
 ## Service Accounts & API Tokens
 

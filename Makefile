@@ -47,7 +47,6 @@ endif
 
 DBMATE ?= ./ops/db/bin/dbmate
 LOCAL_DEV_HELPER := ./scripts/local_dev.sh
-
 ifeq ($(USE_DOCKER),yes)
 DBMATE_ENV :=
 else
@@ -239,9 +238,9 @@ test/ui: ui/install jupyterlite/vendor
 		ui npm run test:ui
 else
 ui/install:
-	cd ui && npm ci
+	$(LOCAL_DEV_HELPER) playwright-install
 
-test/ui:
+test/ui: ui/install
 	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) jwt/dev >/dev/null

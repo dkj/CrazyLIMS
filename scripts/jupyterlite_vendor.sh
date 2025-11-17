@@ -11,8 +11,25 @@ CONTENTS_DIR="$REPO_ROOT/ui/jupyterlite-contents"
 
 JUPYTERLITE_VERSION="0.6.4"
 PYODIDE_KERNEL_VERSION="0.6.1"
+PYODIDE_VERSION="0.25.1"
+PYODIDE_ARCHIVE="pyodide-${PYODIDE_VERSION}.tar.bz2"
+PYODIDE_URL="https://github.com/pyodide/pyodide/releases/download/${PYODIDE_VERSION}/${PYODIDE_ARCHIVE}"
+PYODIDE_CACHE="$CACHE_DIR/${PYODIDE_ARCHIVE}"
+PYODIDE_SRC="$CACHE_DIR/pyodide-${PYODIDE_VERSION}"
 
 mkdir -p "$CACHE_DIR" "$OUTPUT_DIR" "$CONTENTS_DIR"
+
+if [ ! -f "$PYODIDE_CACHE" ]; then
+  echo "Downloading Pyodide ${PYODIDE_VERSION}"
+  curl -L "$PYODIDE_URL" -o "$PYODIDE_CACHE"
+fi
+
+if [ ! -d "$PYODIDE_SRC" ]; then
+  echo "Extracting Pyodide ${PYODIDE_VERSION}"
+  rm -rf "$PYODIDE_SRC"
+  tar -xjf "$PYODIDE_CACHE" -C "$CACHE_DIR"
+  mv "$CACHE_DIR/pyodide" "$PYODIDE_SRC"
+fi
 
 # Remove stale Lite bundles that would otherwise be treated as source configs
 if [ -d "$DIST_LITE_DIR" ]; then
@@ -45,6 +62,9 @@ rm -rf "$OUTPUT_DIR"
   --base-url /eln/lite \
   --debug
 
+rm -rf "$OUTPUT_DIR/pyodide"
+cp -a "$PYODIDE_SRC" "$OUTPUT_DIR/pyodide"
+
 # ensure window.jupyterapp is exposed for the iframe bridge
 "$PYTHON" - <<'PY' "$OUTPUT_DIR/jupyter-lite.json"
 import json
@@ -56,6 +76,7 @@ with open(path, "r", encoding="utf-8") as fh:
 
 config = data.setdefault("jupyter-config-data", {})
 config["exposeAppInBrowser"] = True
+config["pyodideUrl"] = "./pyodide/"
 
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, indent=2)

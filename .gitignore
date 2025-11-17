@@ -4,6 +4,7 @@ db.session.sql
 .jupyterlite.doit.db
 ops/postgraphile/node_modules/
 ui/node_modules/
+ui/.playwright-installed
 ui/dist/
 ui/test-results/
 ops/examples/jwts/*.jwt

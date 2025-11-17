@@ -7,6 +7,8 @@ BIN_DIR="${ROOT_DIR}/.local/bin"
 LOG_DIR="${LOCAL_DIR}/logs"
 PID_DIR="${LOCAL_DIR}/pids"
 PGDATA="${LOCAL_DIR}/pgdata"
+PLAYWRIGHT_STAMP_FILE="${ROOT_DIR}/ui/.playwright-installed"
+PLAYWRIGHT_INSTALL_CMD="${PLAYWRIGHT_INSTALL_CMD:-npx playwright install --with-deps chromium}"
 
 PGHOST="${PGHOST:-127.0.0.1}"
 PG_PORT="${PG_PORT:-6432}"
@@ -333,6 +335,41 @@ ensure_postgraphile_dependencies() {
   (cd "${ROOT_DIR}/ops/postgraphile" && npm install --no-package-lock >/dev/null)
 }
 
+ensure_playwright_tooling() {
+  local ui_dir="${ROOT_DIR}/ui"
+  local package_lock="${ui_dir}/package-lock.json"
+  local package_json="${ui_dir}/package.json"
+  local stamp="${PLAYWRIGHT_STAMP_FILE}"
+
+  if [[ ! -f "${package_json}" || ! -f "${package_lock}" ]]; then
+    echo "ui package.json and package-lock.json are required to install Playwright tooling" >&2
+    exit 1
+  fi
+
+  if [[ ! -d "${ui_dir}/node_modules" ]]; then
+    rm -f "${stamp}"
+  fi
+
+  if [[ -f "${stamp}" ]]; then
+    if [[ "${stamp}" -nt "${package_lock}" && "${stamp}" -nt "${package_json}" ]]; then
+      return
+    fi
+  fi
+
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to install Playwright tooling" >&2
+    exit 1
+  fi
+
+  print_note "Installing UI npm dependencies and Playwright tooling"
+  (
+    cd "${ui_dir}"
+    npm ci
+    bash -lc "${PLAYWRIGHT_INSTALL_CMD}"
+  )
+  touch "${stamp}"
+}
+
 start_postgraphile() {
   ensure_postgraphile_dependencies
 
@@ -433,6 +470,7 @@ Commands:
   migrate        Run database migrations using dbmate
   psql [args]    Open a psql shell authenticated as dev
   logs           Tail service logs for Postgres/PostgREST/PostGraphile
+  playwright     Install npm dependencies and Playwright tooling for the UI
 USAGE
 }
 
@@ -459,6 +497,9 @@ case "${command}" in
     ;;
   logs)
     tail_logs
+    ;;
+  playwright|playwright-install)
+    ensure_playwright_tooling
     ;;
   "")
     usage

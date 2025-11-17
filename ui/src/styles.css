@@ -466,6 +466,7 @@ body {
   border: none;
   border-radius: 0.75rem;
   background: transparent;
+  min-height: 620px;
 }
 
 .notebook-demo {
