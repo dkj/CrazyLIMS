@@ -47,6 +47,8 @@
           if (liteWindow && liteWindow.jupyterapp) {
             try {
               await liteWindow.jupyterapp.started;
+              // Collapse the left sidebar by default to show only the notebook
+              liteWindow.jupyterapp.shell.collapseLeft();
               return liteWindow.jupyterapp;
             } catch (error) {
               console.warn("Waiting for JupyterLite app", error);
