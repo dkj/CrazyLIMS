@@ -1,5 +1,7 @@
 # Minimal ELN MVP Specification (Self‑Contained, Project/Study Access-Controlled)
 
+> Status: historical sketch (pre-unified artefact/ELN schema). Refer to `docs/doc-index.md` and `jupyterlite-eln-plan.md` for the current ELN approach.
+
 ## 1. Overview
 This specification describes a **minimal Electronic Lab Notebook (ELN)** built on PostgreSQL, JupyterLite, and schema-driven APIs (PostgREST or PostGraphile). The MVP persists the **entire Jupyter notebook as JSON** (a blob), implements **append-only versioning**, supports a **lightweight submission/lock** flow, and enforces **project/study-based access control** via PostgreSQL **Row-Level Security (RLS)**—reusing the same ACL semantics as artefacts.
 

@@ -200,6 +200,15 @@ As an expert software developer who favours clarity through minimal architecture
 
 You are an expert developer who creates code and tests that others find easy to understand. We need to more fully test the Rest API functionality. Consider the "User Stories" of section 2 in the "security-access-control-plan-phase1-and-phase2-security-redux.md" file: we will repeat those stories but with two new different research projects, a new separate ops lab, and new input artefacts and new associated downstream artefacts, but which broadly mirror those created directly n the DB for earlier test.  So, first in the testing the admin user should  be used with the rest API to create the new studies and users with appropriate scopes/permissions. Then new JWTs created for those users as required, and the appropriate user uses the rest API to  represent the actions outlined in these user stories. Again we should check what we intended to be created has been. That things can be seen by users we expect to see them, and not seem by other users.
 
+
+
+# review state
+
+Considering the docs in this project to create a LIMS/ELN system, review the state of the project and the progress so far. Are the foundations solid and consistent? Are they concise and elegant? Are the stories detailed enough? Is the data model suitable (consider should it operate in a more write-only and create derivative records manner, or is the current balance appropriate). Should we refine the DB fundamentals, or plug on with ELN delvelopment? Bear in mind that for ELN dev we could consider automatically generating a Python API from the exported openapi interface, and then try using that programatically from the embedded ELN interface. Beyond that we will need to consider how to make that python jupyter based interface increasing lab-user friendly.
+
+
+
+
 ### Later
 
 
