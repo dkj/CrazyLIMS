@@ -9,7 +9,7 @@ Canonical entry point and documentation index for the CrazyLIMS database-first s
 
 ## Documentation map
 - Core references: [docs/security-model.md](docs/security-model.md), [docs/database-schema.md](docs/database-schema.md), [docs/domain-samples.md](docs/domain-samples.md), [docs/ui-handover-integration.md](docs/ui-handover-integration.md).
-- ELN: [jupyterlite-eln-plan.md](jupyterlite-eln-plan.md), [ui/public/eln/embed.html](ui/public/eln/embed.html), [eln-jupyterlite-embedding-attempts.md](eln-jupyterlite-embedding-attempts.md) (experiment log).
+- ELN: [jupyterlite-eln-plan.md](jupyterlite-eln-plan.md), [ui/public/eln/embed.html](ui/public/eln/embed.html), [eln-jupyterlite-embedding-attempts.md](eln-jupyterlite-embedding-attempts.md) (experiment log). The bundled JupyterLite now ships a Pyodide-ready PostgREST client (`crazylims_postgrest_client.pyodide.build_authenticated_client`) plus offline wheels under `/eln/lite/pypi`.
 - Transaction contexts & examples: [docs/transaction-context-examples.md](docs/transaction-context-examples.md), [docs/postman/transaction-context.postman_collection.json](docs/postman/transaction-context.postman_collection.json).
 - Security redux & lineage-aware access: [security-access-control-plan-phase1-and-2-security-redux.md](security-access-control-plan-phase1-and-2-security-redux.md).
 

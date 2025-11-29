@@ -5,7 +5,9 @@ import {
   createInitialNotebookDocument,
   getLiteFrame,
   runNotebookMath,
+  runNotebookCode,
   waitForLiteApp,
+  waitForLiteAuthContext,
   waitForLiteKernelIdle
 } from "./helpers/jupyterlite";
 
@@ -190,7 +192,36 @@ test.describe("ELN full-stack integration", () => {
       ]);
       await waitForLiteApp(liteFrame);
       await waitForLiteKernelIdle(liteFrame);
+      await waitForLiteAuthContext(liteFrame);
       await runNotebookMath(liteFrame, "6+8", /^\s*14\s*$/);
+
+      const authContext = await liteFrame.evaluate(() => {
+        return {
+          origin: window.location.origin,
+          token: sessionStorage.getItem("elnAuthToken") || "",
+          apiBase: sessionStorage.getItem("elnApiBase") || "/api"
+        };
+      });
+      expect(authContext.token).not.toBe("");
+      const clientSnippet = `
+import json
+from crazylims_postgrest_client.pyodide import build_authenticated_client
+from crazylims_postgrest_client.api.rpc_actor_accessible_scopes import post_rpc_actor_accessible_scopes
+from crazylims_postgrest_client.models.post_rpc_actor_accessible_scopes_json_body import PostRpcActorAccessibleScopesJsonBody
+
+client = build_authenticated_client()
+body = PostRpcActorAccessibleScopesJsonBody(p_scope_types=["dataset", "project"])
+response = await post_rpc_actor_accessible_scopes.asyncio_detailed(client=client, body=body)
+print("client-status", int(response.status_code))
+print("scopes-count", len(json.loads(response.content.decode("utf-8"))))
+`.trim();
+
+      await runNotebookCode(
+        liteFrame,
+        clientSnippet,
+        /client-status\s+200[\s\S]*scopes-count\s+[1-9]\d*/,
+        180000
+      );
     } finally {
       if (entryId) {
         await cleanupNotebookEntry(adminToken, entryId);

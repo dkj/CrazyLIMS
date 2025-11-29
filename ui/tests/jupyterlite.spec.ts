@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
 import {
   getLiteFrame,
+  JSON_HEADERS,
   launchPyodideNotebook,
   runNotebookMath,
+  runNotebookCode,
+  waitForLiteAuthContext,
   setupNotebookWorkbenchApi,
   stubEmptyApi,
   waitForLiteApp,
@@ -45,15 +48,18 @@ test.describe("JupyterLite embedding", () => {
     const notebookIframe = page.locator('iframe[title="Notebook Lite Demo"]');
     await expect(notebookIframe).toBeVisible({ timeout: 20000 });
 
-    const notebookFrame = await getLiteFrame(page, ['iframe[title="Notebook Lite Demo"]']);
+    const notebookFrame = await getLiteFrame(page, [
+      'iframe[title="Notebook Lite Demo"]',
+      'iframe[title="Embedded JupyterLite"]'
+    ]);
     await waitForLiteApp(notebookFrame);
-    await launchPyodideNotebook(notebookFrame);
     await waitForLiteKernelIdle(notebookFrame);
+    await waitForLiteAuthContext(notebookFrame);
     await runNotebookMath(notebookFrame, "4+5", /^\s*9\s*$/);
   });
 
   test("allows creating a new notebook entry through the ELN workbench", async ({ page }) => {
-    test.setTimeout(120000);
+    test.setTimeout(240000);
 
     await setupNotebookWorkbenchApi(page);
 
@@ -100,6 +106,34 @@ test.describe("JupyterLite embedding", () => {
     ]);
     await waitForLiteApp(liteFrame);
     await waitForLiteKernelIdle(liteFrame);
+    await waitForLiteAuthContext(liteFrame);
     await runNotebookMath(liteFrame, "5*4", /^\s*20\s*$/);
+
+    const authContext = await liteFrame.evaluate(() => {
+      return {
+        origin: window.location.origin,
+        token: sessionStorage.getItem("elnAuthToken") || "",
+        apiBase: sessionStorage.getItem("elnApiBase") || "/api"
+      };
+    });
+    expect(authContext.token).not.toBe("");
+    const clientSnippet = `
+import json
+from crazylims_postgrest_client.pyodide import build_authenticated_client
+from crazylims_postgrest_client.api.rpc_actor_accessible_scopes import post_rpc_actor_accessible_scopes
+from crazylims_postgrest_client.models.post_rpc_actor_accessible_scopes_json_body import PostRpcActorAccessibleScopesJsonBody
+import pyodide_http
+
+pyodide_http.patch_all()
+
+client = build_authenticated_client()
+payload = PostRpcActorAccessibleScopesJsonBody(p_scope_types=["dataset"])
+response = await post_rpc_actor_accessible_scopes.asyncio_detailed(client=client, body=payload)
+scopes = json.loads(response.content.decode("utf-8"))
+print("client-status", int(response.status_code))
+print("scopes-count", len(scopes))
+`.trim();
+
+    await runNotebookCode(liteFrame, clientSnippet, /scopes-count\s+[1-9]\d*/, 180000);
   });
 });

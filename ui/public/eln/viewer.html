@@ -31,9 +31,57 @@
       const liteFrame = document.getElementById("lite-frame");
       let liteWindow = null;
       const PYODIDE_KERNEL_NAME = "python";
+      const currentAuth = {
+        authToken: null,
+        apiBase: null
+      };
+      let lastSessionContext = null;
+
+      function pushAuthIntoKernel() {
+        if (!lastSessionContext?.session?.kernel || !currentAuth.authToken) {
+          return;
+        }
+        const kernel = lastSessionContext.session.kernel;
+        const apiBase = currentAuth.apiBase ?? "/api";
+        const resolvedBase = apiBase.startsWith("/")
+          ? `${window.location.origin}${apiBase}`
+          : apiBase;
+        const code = `
+import js
+js.globalThis._crazylimsAuthToken = ${JSON.stringify(currentAuth.authToken)};
+js.globalThis._crazylimsApiBase = ${JSON.stringify(apiBase)};
+js.globalThis._crazylimsApiResolved = ${JSON.stringify(resolvedBase)};
+`;
+        try {
+          const future = kernel.requestExecute({ code, stop_on_error: false });
+          future.done.catch(() => undefined);
+        } catch (error) {
+          console.warn("Unable to push auth context into Pyodide kernel", error);
+        }
+      }
+
+      function applyAuthContext() {
+        if (!liteWindow) return;
+        try {
+          if (currentAuth.apiBase) {
+            liteWindow.elnApiBase = currentAuth.apiBase;
+            liteWindow.__crazylimsApiBase = currentAuth.apiBase;
+            liteWindow.sessionStorage?.setItem("elnApiBase", currentAuth.apiBase);
+          }
+          if (currentAuth.authToken) {
+            liteWindow.elnAuthToken = currentAuth.authToken;
+            liteWindow.__crazylimsAuthToken = currentAuth.authToken;
+            liteWindow.sessionStorage?.setItem("elnAuthToken", currentAuth.authToken);
+          }
+        } catch (error) {
+          console.warn("Unable to push auth context into JupyterLite frame", error);
+        }
+        pushAuthIntoKernel();
+      }
 
       liteFrame.addEventListener("load", () => {
         liteWindow = liteFrame.contentWindow;
+        applyAuthContext();
         window.parent.postMessage({ type: "eln-lite-ready" }, window.location.origin);
       });
 
@@ -60,7 +108,12 @@
       }
 
       async function openNotebook(payload) {
-        const { entryId, versionNumber, content } = payload;
+        const { entryId, versionNumber, content, authToken, apiBase } = payload;
+        if (apiBase || authToken) {
+          currentAuth.apiBase = apiBase ?? currentAuth.apiBase;
+          currentAuth.authToken = authToken ?? currentAuth.authToken;
+          applyAuthContext();
+        }
         const filename = `${entryId}-v${versionNumber}.ipynb`;
 
         try {
@@ -78,6 +131,7 @@
           });
           const sessionContext = widget?.context?.sessionContext;
           await ensurePyodideKernel(sessionContext);
+          await ensureElnClient(sessionContext);
           await waitForKernelIdle(sessionContext);
           window.parent.postMessage(
             { type: "eln-lite-opened", entryId, versionNumber },
@@ -112,8 +166,48 @@
             await sessionContext.changeKernel({ name: PYODIDE_KERNEL_NAME });
           }
           await sessionContext.ready;
+          lastSessionContext = sessionContext;
+          pushAuthIntoKernel();
         } catch (error) {
           console.warn("Failed to enforce Pyodide kernel", error);
+        }
+      }
+
+      async function ensureElnClient(sessionContext) {
+        if (!sessionContext?.session?.kernel) {
+          return;
+        }
+        try {
+          const kernel = sessionContext.session.kernel;
+          const installCode = `
+import micropip
+await micropip.install(
+    [
+        "/eln/lite/pypi/attrs-25.4.0-py3-none-any.whl",
+        "/eln/lite/pypi/six-1.17.0-py2.py3-none-any.whl",
+        "/eln/lite/pypi/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+        "/eln/lite/pypi/exceptiongroup-1.3.1-py3-none-any.whl",
+        "/eln/lite/pypi/sniffio-1.3.1-py3-none-any.whl",
+        "/eln/lite/pypi/idna-3.11-py3-none-any.whl",
+        "/eln/lite/pypi/h11-0.14.0-py3-none-any.whl",
+        "/eln/lite/pypi/certifi-2025.11.12-py3-none-any.whl",
+        "/eln/lite/pypi/anyio-4.12.0-py3-none-any.whl",
+        "/eln/lite/pypi/httpcore-0.17.3-py3-none-any.whl",
+        "/eln/lite/pypi/httpx-0.24.1-py3-none-any.whl",
+        "/eln/lite/pypi/typing_extensions-4.15.0-py3-none-any.whl",
+        "/eln/lite/pypi/pyodide_http-0.2.2-py3-none-any.whl",
+        "/eln/lite/pypi/crazylims_postgrest_client-0.1.0-py3-none-any.whl",
+    ],
+    deps=False,
+    keep_going=True,
+)
+import crazylims_postgrest_client
+import pyodide_http
+`;
+          const future = kernel.requestExecute({ code: installCode, stop_on_error: true });
+          await future.done;
+        } catch (error) {
+          console.warn("Failed to preload ELN client into Pyodide", error);
         }
       }
 
@@ -138,6 +232,12 @@
         }
         const data = event.data;
         if (!data || typeof data !== "object") {
+          return;
+        }
+        if (data.type === "eln-auth-context") {
+          currentAuth.authToken = data.authToken ?? currentAuth.authToken;
+          currentAuth.apiBase = data.apiBase ?? currentAuth.apiBase;
+          applyAuthContext();
           return;
         }
         if (data.type === "eln-open-notebook") {

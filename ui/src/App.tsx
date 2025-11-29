@@ -677,7 +677,7 @@ const navigateToSampleIfVisible = useCallback(
     {
       path: "/eln/embed-test",
       label: "ELN Demo",
-      element: <NotebookIframeDemo />
+      element: <NotebookIframeDemo token={token} apiBase={API_BASE} />
     },
     { path: "/samples", label: "Samples", element: samplesSection },
     {

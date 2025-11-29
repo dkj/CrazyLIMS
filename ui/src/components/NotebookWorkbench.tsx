@@ -308,6 +308,21 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
     [apiBase, authHeaders, token]
   );
 
+  const sendAuthContext = useCallback(() => {
+    const iframeWindow = viewerIframeRef.current?.contentWindow;
+    if (!iframeWindow) {
+      return;
+    }
+    iframeWindow.postMessage(
+      {
+        type: "eln-auth-context",
+        authToken: token ?? null,
+        apiBase
+      },
+      window.location.origin
+    );
+  }, [apiBase, token]);
+
   const postNotebookToViewer = useCallback(() => {
     if (!pendingNotebookRef.current) {
       return;
@@ -322,12 +337,14 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
         type: "eln-open-notebook",
         entryId: payload.entryId,
         versionNumber: payload.versionNumber,
-        content: payload.document
+        content: payload.document,
+        authToken: token ?? null,
+        apiBase
       },
       window.location.origin
     );
     pendingNotebookRef.current = null;
-  }, []);
+  }, [apiBase, token]);
 
   const publishNotebookToLite = useCallback(
     (doc: NotebookDocument, entryId: string, versionNumber: number) => {
@@ -401,9 +418,14 @@ export function NotebookWorkbench({ token, apiBase }: NotebookWorkbenchProps) {
 
   useEffect(() => {
     if (viewerReady) {
+      sendAuthContext();
       postNotebookToViewer();
     }
-  }, [viewerReady, postNotebookToViewer]);
+  }, [viewerReady, postNotebookToViewer, sendAuthContext]);
+
+  useEffect(() => {
+    sendAuthContext();
+  }, [sendAuthContext]);
 
   useEffect(() => {
     if (availableScopes.length === 0) {

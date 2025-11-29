@@ -272,6 +272,24 @@ export async function waitForLiteKernelIdle(frame: Frame) {
   );
 }
 
+export async function waitForLiteAuthContext(frame: Frame) {
+  await expect
+    .poll(
+      async () =>
+        frame.evaluate(() => {
+          try {
+            const token = sessionStorage.getItem("elnAuthToken");
+            const base = sessionStorage.getItem("elnApiBase");
+            return token && base ? "ready" : "";
+          } catch {
+            return "";
+          }
+        }),
+      { timeout: 60000, message: "Timed out waiting for ELN auth context in JupyterLite" }
+    )
+    .toBe("ready");
+}
+
 export async function launchPyodideNotebook(frame: Frame) {
   const notebookLauncherButton = frame
     .getByRole("button", { name: /Python \(Pyodide\)/ })
@@ -296,4 +314,31 @@ export async function runNotebookMath(
     hasText: expectedOutput
   });
   await expect(output).toBeVisible({ timeout: 30000 });
+}
+
+export async function runNotebookCode(
+  frame: Frame,
+  code: string,
+  expectedOutput: RegExp,
+  timeout = 60000
+) {
+  const codeCell = frame.locator(".jp-CodeCell .cm-content").first();
+  await expect(codeCell).toBeVisible({ timeout: 60000 });
+  await codeCell.scrollIntoViewIfNeeded();
+  await codeCell.focus();
+  await codeCell.fill(code);
+  await codeCell.press("Shift+Enter");
+
+  await expect
+    .poll(
+      async () => {
+        const texts = await frame.locator(".jp-OutputArea-output").allTextContents();
+        return texts.join("\n");
+      },
+      {
+        timeout,
+        message: `Notebook output did not match ${expectedOutput}`
+      }
+    )
+    .toMatch(expectedOutput);
 }
