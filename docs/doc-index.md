@@ -9,6 +9,7 @@ README.md is the canonical entry point for the project. This file is a companion
 - `docs/database-schema.md` – Phase 2 Redux schema overview (artefacts, processes, scopes, ELN tables, storage RPC).
 - `docs/domain-samples.md` – unified artefact/provenance guidance (wells-as-artefacts, storage-as-artefacts, lineage conventions).
 - `docs/ui-handover-integration.md` – research⇄ops transfer helpers, RPCs, views for UI usage.
+- `docs/ui-testing.md` – Playwright testing quickstart, dependency bootstrapping, and ELN E2E toggles.
 - `contracts/postgrest/openapi.json` / `contracts/postgraphile/*` – exported API contracts for client generation.
 
 ## Active plans / near-term tracks
