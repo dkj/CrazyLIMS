@@ -180,26 +180,24 @@ js.globalThis._crazylimsApiResolved = ${JSON.stringify(resolvedBase)};
         try {
           const kernel = sessionContext.session.kernel;
           const installCode = `
+from pathlib import Path
+
 import micropip
+
+  wheel_index = Path("/eln/lite/pypi/all.json")
+  index_url = wheel_index.resolve().as_uri()
+
 await micropip.install(
     [
-        "/eln/lite/pypi/attrs-25.4.0-py3-none-any.whl",
-        "/eln/lite/pypi/six-1.17.0-py2.py3-none-any.whl",
-        "/eln/lite/pypi/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
-        "/eln/lite/pypi/exceptiongroup-1.3.1-py3-none-any.whl",
-        "/eln/lite/pypi/sniffio-1.3.1-py3-none-any.whl",
-        "/eln/lite/pypi/idna-3.11-py3-none-any.whl",
-        "/eln/lite/pypi/h11-0.14.0-py3-none-any.whl",
-        "/eln/lite/pypi/certifi-2025.11.12-py3-none-any.whl",
-        "/eln/lite/pypi/anyio-4.12.0-py3-none-any.whl",
-        "/eln/lite/pypi/httpcore-0.17.3-py3-none-any.whl",
-        "/eln/lite/pypi/httpx-0.24.1-py3-none-any.whl",
-        "/eln/lite/pypi/typing_extensions-4.15.0-py3-none-any.whl",
-        "/eln/lite/pypi/pyodide_http-0.2.2-py3-none-any.whl",
-        "/eln/lite/pypi/crazylims_postgrest_client-0.1.0-py3-none-any.whl",
+        "crazylims-postgrest-client",
+        "pyodide-http",
+        "httpx",
+        "attrs",
+        "python-dateutil",
     ],
-    deps=False,
+    deps=True,
     keep_going=True,
+    index_urls=[index_url],
 )
 import crazylims_postgrest_client
 import pyodide_http
