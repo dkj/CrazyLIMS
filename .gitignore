@@ -1,10 +1,14 @@
 db.session.sql
 .local/
 .localdev/
+.jupyterlite.doit.db
 ops/postgraphile/node_modules/
 ui/node_modules/
+ui/.playwright-installed
 ui/dist/
 ui/test-results/
 ops/examples/jwts/*.jwt
 !ops/examples/jwts/make-dev-jwts.sh
 ui/public/tokens/*.jwt
+/.cache/
+ui/public/eln/lite/

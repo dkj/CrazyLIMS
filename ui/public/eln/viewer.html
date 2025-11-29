@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ELN Notebook Viewer Host</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0f172a;
+      }
+
+      iframe {
+        border: none;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe
+      id="lite-frame"
+      title="Embedded JupyterLite"
+      src="/eln/lite/lab/index.html?kernel=python&theme=JupyterLab%20Dark"
+      allow="clipboard-read; clipboard-write"
+    ></iframe>
+    <script>
+      const liteFrame = document.getElementById("lite-frame");
+      let liteWindow = null;
+      const PYODIDE_KERNEL_NAME = "python";
+      const currentAuth = {
+        authToken: null,
+        apiBase: null
+      };
+      let lastSessionContext = null;
+
+      function pushAuthIntoKernel() {
+        if (!lastSessionContext?.session?.kernel || !currentAuth.authToken) {
+          return;
+        }
+        const kernel = lastSessionContext.session.kernel;
+        const apiBase = currentAuth.apiBase ?? "/api";
+        const resolvedBase = apiBase.startsWith("/")
+          ? `${window.location.origin}${apiBase}`
+          : apiBase;
+        const code = `
+import js
+js.globalThis._crazylimsAuthToken = ${JSON.stringify(currentAuth.authToken)};
+js.globalThis._crazylimsApiBase = ${JSON.stringify(apiBase)};
+js.globalThis._crazylimsApiResolved = ${JSON.stringify(resolvedBase)};
+`;
+        try {
+          const future = kernel.requestExecute({ code, stop_on_error: false });
+          future.done.catch(() => undefined);
+        } catch (error) {
+          console.warn("Unable to push auth context into Pyodide kernel", error);
+        }
+      }
+
+      function applyAuthContext() {
+        if (!liteWindow) return;
+        try {
+          if (currentAuth.apiBase) {
+            liteWindow.elnApiBase = currentAuth.apiBase;
+            liteWindow.__crazylimsApiBase = currentAuth.apiBase;
+            liteWindow.sessionStorage?.setItem("elnApiBase", currentAuth.apiBase);
+          }
+          if (currentAuth.authToken) {
+            liteWindow.elnAuthToken = currentAuth.authToken;
+            liteWindow.__crazylimsAuthToken = currentAuth.authToken;
+            liteWindow.sessionStorage?.setItem("elnAuthToken", currentAuth.authToken);
+          }
+        } catch (error) {
+          console.warn("Unable to push auth context into JupyterLite frame", error);
+        }
+        pushAuthIntoKernel();
+      }
+
+      liteFrame.addEventListener("load", () => {
+        liteWindow = liteFrame.contentWindow;
+        applyAuthContext();
+        window.parent.postMessage({ type: "eln-lite-ready" }, window.location.origin);
+      });
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function waitForApp() {
+        const attemptStart = Date.now();
+        while (Date.now() - attemptStart < 20000) {
+          if (liteWindow && liteWindow.jupyterapp) {
+            try {
+              await liteWindow.jupyterapp.started;
+              // Collapse the left sidebar by default to show only the notebook
+              liteWindow.jupyterapp.shell.collapseLeft();
+              return liteWindow.jupyterapp;
+            } catch (error) {
+              console.warn("Waiting for JupyterLite app", error);
+            }
+          }
+          await sleep(250);
+        }
+        throw new Error("Timed out waiting for JupyterLite to start");
+      }
+
+      async function openNotebook(payload) {
+        const { entryId, versionNumber, content, authToken, apiBase } = payload;
+        if (apiBase || authToken) {
+          currentAuth.apiBase = apiBase ?? currentAuth.apiBase;
+          currentAuth.authToken = authToken ?? currentAuth.authToken;
+          applyAuthContext();
+        }
+        const filename = `${entryId}-v${versionNumber}.ipynb`;
+
+        try {
+          const app = await waitForApp();
+          const contents = app.serviceManager.contents;
+          await contents.save(filename, {
+            type: "notebook",
+            format: "json",
+            content
+          });
+          const widget = await app.commands.execute("docmanager:open", {
+            path: filename,
+            factory: "Notebook",
+            kernel: { name: PYODIDE_KERNEL_NAME }
+          });
+          const sessionContext = widget?.context?.sessionContext;
+          await ensurePyodideKernel(sessionContext);
+          await ensureElnClient(sessionContext);
+          await waitForKernelIdle(sessionContext);
+          window.parent.postMessage(
+            { type: "eln-lite-opened", entryId, versionNumber },
+            window.location.origin
+          );
+        } catch (error) {
+          console.error("Failed to open notebook in JupyterLite", error);
+          window.parent.postMessage(
+            {
+              type: "eln-lite-error",
+              entryId,
+              versionNumber,
+              message:
+                error instanceof Error ? error.message : "Unknown JupyterLite error"
+            },
+            window.location.origin
+          );
+        }
+      }
+
+      async function ensurePyodideKernel(sessionContext) {
+        if (!sessionContext) {
+          return;
+        }
+        try {
+          await sessionContext.initialize();
+          let kernelName =
+            sessionContext.session?.kernel?.name ??
+            sessionContext.session?.kernel?.model?.name ??
+            null;
+          if (kernelName !== PYODIDE_KERNEL_NAME) {
+            await sessionContext.changeKernel({ name: PYODIDE_KERNEL_NAME });
+          }
+          await sessionContext.ready;
+          lastSessionContext = sessionContext;
+          pushAuthIntoKernel();
+        } catch (error) {
+          console.warn("Failed to enforce Pyodide kernel", error);
+        }
+      }
+
+      async function ensureElnClient(sessionContext) {
+        if (!sessionContext?.session?.kernel) {
+          return;
+        }
+        try {
+          const requiredPackages = [
+            "attrs",
+            "six",
+            "python-dateutil",
+            "exceptiongroup",
+            "sniffio",
+            "idna",
+            "h11",
+            "certifi",
+            "anyio",
+            "httpcore",
+            "httpx",
+            "typing-extensions",
+            "pyodide-http",
+            "crazylims-postgrest-client"
+          ];
+
+          async function resolveWheelUrls() {
+            try {
+              const res = await fetch("/eln/lite/pypi/all.json");
+              if (!res.ok) return null;
+              const index = await res.json();
+              const urls = [];
+              for (const pkg of requiredPackages) {
+                const entry = index[pkg];
+                if (!entry || !entry.releases) continue;
+                const versions = Object.keys(entry.releases).sort();
+                const latest = versions[versions.length - 1];
+                const candidates = entry.releases[latest];
+                const wheel = candidates?.[0]?.filename;
+                if (wheel) {
+                  urls.push(`/eln/lite/pypi/${wheel}`);
+                }
+              }
+              return urls.length ? urls : null;
+            } catch (error) {
+              console.warn("Failed to read local wheel index", error);
+              return null;
+            }
+          }
+
+          const wheelUrls = (await resolveWheelUrls()) ?? [];
+          const kernel = sessionContext.session.kernel;
+          const installCode = `
+import importlib
+import json
+
+try:
+    importlib.import_module("crazylims_postgrest_client")
+    importlib.import_module("pyodide_http")
+except ImportError:
+    import micropip
+    wheels = json.loads(${JSON.stringify(JSON.stringify(wheelUrls))})
+    if wheels:
+        await micropip.install(wheels, deps=False, keep_going=True)
+    else:
+        await micropip.install(
+            ["crazylims-postgrest-client", "pyodide-http>=0.2.2", "httpx==0.24.1"],
+            keep_going=True,
+        )
+
+importlib.import_module("crazylims_postgrest_client")
+importlib.import_module("pyodide_http")
+`;
+          const future = kernel.requestExecute({ code: installCode, stop_on_error: true });
+          await future.done;
+        } catch (error) {
+          console.warn("Failed to preload ELN client into Pyodide", error);
+        }
+      }
+
+      async function waitForKernelIdle(sessionContext) {
+        if (!sessionContext) {
+          return;
+        }
+        const start = Date.now();
+        while (Date.now() - start < 20000) {
+          const kernel = sessionContext.session?.kernel ?? null;
+          if (kernel && kernel.status === "idle") {
+            return;
+          }
+          await sleep(200);
+        }
+        console.warn("Pyodide kernel did not reach idle state before timeout");
+      }
+
+      window.addEventListener("message", (event) => {
+        if (event.origin !== window.location.origin) {
+          return;
+        }
+        const data = event.data;
+        if (!data || typeof data !== "object") {
+          return;
+        }
+        if (data.type === "eln-auth-context") {
+          currentAuth.authToken = data.authToken ?? currentAuth.authToken;
+          currentAuth.apiBase = data.apiBase ?? currentAuth.apiBase;
+          applyAuthContext();
+          return;
+        }
+        if (data.type === "eln-open-notebook") {
+          openNotebook(data);
+        }
+      });
+    </script>
+  </body>
+</html>

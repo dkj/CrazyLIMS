@@ -684,6 +684,7 @@ $$;
 -- migrate:down
 DO $$
 BEGIN
+  DELETE FROM app_eln.notebook_entries WHERE metadata ->> 'seed' = 'phase2-redux';
   DELETE FROM app_provenance.artefact_storage_events WHERE metadata ->> 'seed' = 'phase2-redux';
   UPDATE app_provenance.artefacts
   SET container_slot_id = NULL,

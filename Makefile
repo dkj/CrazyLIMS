@@ -1,14 +1,14 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test jupyterlite/vendor
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
 
 POSTGREST_INTERNAL_PORT ?= 3000
 POSTGRAPHILE_INTERNAL_PORT ?= 3001
-POSTGREST_HOST_PORT ?= 6000
-POSTGRAPHILE_HOST_PORT ?= 6001
+POSTGREST_HOST_PORT ?= 7100
+POSTGRAPHILE_HOST_PORT ?= 7101
 POSTGREST_PORT ?= $(POSTGREST_HOST_PORT)
 POSTGRAPHILE_PORT ?= $(POSTGRAPHILE_HOST_PORT)
 PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
@@ -47,7 +47,6 @@ endif
 
 DBMATE ?= ./ops/db/bin/dbmate
 LOCAL_DEV_HELPER := ./scripts/local_dev.sh
-
 ifeq ($(USE_DOCKER),yes)
 DBMATE_ENV :=
 else
@@ -69,6 +68,13 @@ RBAC_TEST_SCRIPT := scripts/test_rbac.sh
 REST_STORY_TEST_SCRIPT := scripts/test_rest_story.sh
 JWT_PUBLIC_DIR := ui/public/tokens
 POSTGREST_CONTRACT_JWT ?= $(JWT_DIR)/admin.jwt
+RUN_FULL_ELN_E2E ?= true
+
+ifeq ($(USE_DOCKER),yes)
+FULL_ELN_POSTGREST_URL ?= http://postgrest:3000
+else
+FULL_ELN_POSTGREST_URL ?= http://$(POSTGREST_HOST):$(POSTGREST_PORT)
+endif
 
 ifeq ($(PGHOST),db)
 POSTGREST_HOST := postgrest
@@ -225,15 +231,27 @@ ifeq ($(USE_DOCKER),yes)
 ui/install:
 	docker compose run --rm --no-deps ui npm ci
 
-test/ui: ui/install
-	docker compose run --rm --no-deps ui npm run test:ui
+test/ui: ui/install jupyterlite/vendor
+	docker compose run --rm --no-deps \
+		-e RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
+		-e FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
+		ui npm run test:ui
 else
 ui/install:
-	@echo "Skipping UI dependency install (Docker disabled or unavailable)."
+	$(LOCAL_DEV_HELPER) playwright-install
 
-test/ui:
-	@echo "Skipping UI Playwright tests (Docker disabled or unavailable)."
+test/ui: ui/install
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
+	$(MAKE) db-wait >/dev/null
+	$(MAKE) jwt/dev >/dev/null
+	$(MAKE) jupyterlite/vendor >/dev/null
+	cd ui && RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
+		FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
+		npm run test:ui
 endif
+
+jupyterlite/vendor:
+	./scripts/jupyterlite_vendor.sh
 
 ifeq ($(USE_DOCKER),yes)
 test/security:

@@ -16,7 +16,7 @@ export AUTH="Authorization: Bearer $(cat ops/examples/jwts/admin.jwt)"
 curl -s -X POST \
   -H "$AUTH" \
   -H "Content-Type: application/json" \
-  http://localhost:6000/app_core.users \
+  http://localhost:7100/app_core.users \
   -d '{"email":"demo-user@example.org","full_name":"Demo User","default_role":"app_researcher"}' \
   | jq .
 ```

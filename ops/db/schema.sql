@@ -17,6 +17,13 @@ CREATE SCHEMA app_core;
 
 
 --
+-- Name: app_eln; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA app_eln;
+
+
+--
 -- Name: app_provenance; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -70,6 +77,252 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+
+
+--
+-- Name: actor_accessible_scopes(text[]); Type: FUNCTION; Schema: app_core; Owner: -
+--
+
+CREATE FUNCTION app_core.actor_accessible_scopes(p_scope_types text[] DEFAULT NULL::text[]) RETURNS TABLE(scope_id uuid, scope_key text, scope_type text, display_name text, role_name text, source_scope_id uuid, source_role_name text)
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_security', 'app_core'
+    AS $$
+  SELECT *
+  FROM app_security.actor_accessible_scopes(p_scope_types);
+$$;
+
+
+--
+-- Name: can_access_entry(uuid, text[]); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.can_access_entry(p_entry_id uuid, p_required_roles text[] DEFAULT NULL::text[]) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security', 'app_core'
+    SET row_security TO 'off'
+    AS $$
+BEGIN
+  IF p_entry_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF app_security.has_role('app_admin') THEN
+    RETURN true;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1
+    FROM app_eln.notebook_entry_scopes s
+    WHERE s.entry_id = p_entry_id
+      AND app_security.actor_has_scope(s.scope_id, p_required_roles)
+  );
+END;
+$$;
+
+
+--
+-- Name: can_edit_entry(uuid, text[]); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.can_edit_entry(p_entry_id uuid, p_required_roles text[] DEFAULT ARRAY['app_researcher'::text, 'app_operator'::text, 'app_admin'::text]) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security', 'app_core'
+    SET row_security TO 'off'
+    AS $$
+DECLARE
+  v_status text;
+BEGIN
+  IF p_entry_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT status
+  INTO v_status
+  FROM app_eln.notebook_entries
+  WHERE entry_id = p_entry_id;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  IF v_status <> 'draft' AND NOT app_security.has_role('app_admin') THEN
+    RETURN false;
+  END IF;
+
+  RETURN app_eln.can_access_entry(p_entry_id, p_required_roles);
+END;
+$$;
+
+
+--
+-- Name: canonical_json_digest(jsonb); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.canonical_json_digest(p_json jsonb) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT encode(digest(p_json::text, 'sha256'), 'hex');
+$$;
+
+
+--
+-- Name: tg_enforce_entry_status(); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.tg_enforce_entry_status() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security', 'app_core'
+    AS $$
+DECLARE
+  v_actor uuid := app_security.current_actor_id();
+  v_is_admin boolean := app_security.has_role('app_admin');
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS NULL THEN
+      NEW.status := 'draft';
+    ELSIF NEW.status <> 'draft' THEN
+      RAISE EXCEPTION 'New notebook entries must start in draft status'
+        USING ERRCODE = 'check_violation';
+    END IF;
+
+    NEW.created_by := COALESCE(NEW.created_by, v_actor);
+    NEW.updated_by := COALESCE(NEW.updated_by, v_actor);
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'locked' AND NEW.status = 'locked' THEN
+    RAISE EXCEPTION 'Notebook entry % is locked and cannot be modified', OLD.entry_id
+      USING ERRCODE = '55000';
+  END IF;
+
+  IF OLD.status = 'locked' AND NEW.status <> 'locked' THEN
+    IF NOT v_is_admin THEN
+      RAISE EXCEPTION 'Only administrators may alter locked notebook entries'
+        USING ERRCODE = '42501';
+    END IF;
+    NEW.locked_at := NULL;
+    NEW.locked_by := NULL;
+  END IF;
+
+  IF NEW.status = 'locked' AND OLD.status <> 'submitted' THEN
+    RAISE EXCEPTION 'Notebook entry must be submitted before it can be locked'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF OLD.status = 'submitted' AND NEW.status = 'submitted' THEN
+    RAISE EXCEPTION 'Submitted notebook entry cannot be modified without a status change'
+      USING ERRCODE = '55000';
+  END IF;
+
+  IF NEW.status = 'submitted' AND OLD.status = 'draft' THEN
+    NEW.submitted_at := clock_timestamp();
+    NEW.submitted_by := COALESCE(NEW.submitted_by, v_actor);
+  ELSIF OLD.status = 'submitted' AND NEW.status = 'draft' THEN
+    IF NOT v_is_admin THEN
+      RAISE EXCEPTION 'Only administrators may revert submissions back to draft'
+        USING ERRCODE = '42501';
+    END IF;
+    NEW.submitted_at := NULL;
+    NEW.submitted_by := NULL;
+    NEW.locked_at := NULL;
+    NEW.locked_by := NULL;
+  END IF;
+
+  IF NEW.status = 'locked' AND OLD.status = 'submitted' THEN
+    NEW.locked_at := clock_timestamp();
+    NEW.locked_by := COALESCE(NEW.locked_by, v_actor);
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: tg_ensure_primary_scope(); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.tg_ensure_primary_scope() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security', 'app_core'
+    SET row_security TO 'off'
+    AS $$
+DECLARE
+  v_actor uuid := COALESCE(app_security.current_actor_id(), NEW.created_by);
+BEGIN
+  INSERT INTO app_eln.notebook_entry_scopes (entry_id, scope_id, relationship, assigned_by)
+  VALUES (NEW.entry_id, NEW.primary_scope_id, 'primary', v_actor)
+  ON CONFLICT (entry_id, scope_id, relationship) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: tg_prepare_notebook_version(); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.tg_prepare_notebook_version() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security', 'app_core'
+    AS $$
+DECLARE
+  v_next integer;
+  v_status text;
+  v_actor uuid := app_security.current_actor_id();
+BEGIN
+  IF NEW.entry_id IS NULL THEN
+    RAISE EXCEPTION 'Notebook version must reference an entry'
+      USING ERRCODE = 'not_null_violation';
+  END IF;
+
+  SELECT status
+  INTO v_status
+  FROM app_eln.notebook_entries
+  WHERE entry_id = NEW.entry_id
+  FOR SHARE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Notebook entry % does not exist', NEW.entry_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  IF v_status IN ('submitted','locked') AND NOT app_security.has_role('app_admin') THEN
+    RAISE EXCEPTION 'Notebook entry % is % and cannot be modified', NEW.entry_id, v_status
+      USING ERRCODE = '55000';
+  END IF;
+
+  IF NEW.version_number IS NULL OR NEW.version_number <= 0 THEN
+    SELECT COALESCE(MAX(version_number), 0) + 1
+    INTO v_next
+    FROM app_eln.notebook_entry_versions
+    WHERE entry_id = NEW.entry_id;
+
+    NEW.version_number := v_next;
+  END IF;
+
+  NEW.created_by := COALESCE(NEW.created_by, v_actor);
+  NEW.checksum := app_eln.canonical_json_digest(NEW.notebook_json);
+
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: tg_touch_notebook_entry(); Type: FUNCTION; Schema: app_eln; Owner: -
+--
+
+CREATE FUNCTION app_eln.tg_touch_notebook_entry() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'app_eln', 'app_security'
+    AS $$
+BEGIN
+  NEW.updated_at := clock_timestamp();
+  NEW.updated_by := COALESCE(app_security.current_actor_id(), NEW.updated_by);
+  RETURN NEW;
+END;
+$$;
 
 
 --
@@ -2125,6 +2378,48 @@ $$;
 
 
 --
+-- Name: actor_accessible_scopes(text[]); Type: FUNCTION; Schema: app_security; Owner: -
+--
+
+CREATE FUNCTION app_security.actor_accessible_scopes(p_scope_types text[] DEFAULT NULL::text[]) RETURNS TABLE(scope_id uuid, scope_key text, scope_type text, display_name text, role_name text, source_scope_id uuid, source_role_name text)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public', 'app_security', 'app_core'
+    SET row_security TO 'off'
+    AS $$
+DECLARE
+  v_filter text[];
+BEGIN
+  IF p_scope_types IS NOT NULL THEN
+    v_filter := ARRAY(
+      SELECT DISTINCT lower(trim(val))
+      FROM unnest(p_scope_types) AS val
+      WHERE val IS NOT NULL AND trim(val) <> ''
+    );
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    ar.scope_id,
+    s.scope_key,
+    s.scope_type,
+    s.display_name,
+    ar.role_name,
+    ar.source_scope_id,
+    ar.source_role_name
+  FROM app_security.actor_scope_roles(app_security.current_actor_id()) ar
+  JOIN app_security.scopes s
+    ON s.scope_id = ar.scope_id
+  WHERE s.is_active
+    AND (
+      v_filter IS NULL
+      OR array_length(v_filter, 1) IS NULL
+      OR s.scope_type = ANY(v_filter)
+    );
+END;
+$$;
+
+
+--
 -- Name: actor_has_scope(uuid, text[], uuid); Type: FUNCTION; Schema: app_security; Owner: -
 --
 
@@ -2949,6 +3244,111 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: notebook_entries; Type: TABLE; Schema: app_eln; Owner: -
+--
+
+CREATE TABLE app_eln.notebook_entries (
+    entry_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    entry_key text,
+    title text NOT NULL,
+    description text,
+    primary_scope_id uuid NOT NULL,
+    status text DEFAULT 'draft'::text NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    submitted_at timestamp with time zone,
+    submitted_by uuid,
+    locked_at timestamp with time zone,
+    locked_by uuid,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid DEFAULT app_security.current_actor_id() NOT NULL,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    updated_by uuid DEFAULT app_security.current_actor_id() NOT NULL,
+    CONSTRAINT notebook_entries_entry_key_check CHECK (((entry_key IS NULL) OR (entry_key = lower(entry_key)))),
+    CONSTRAINT notebook_entries_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT notebook_entries_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'submitted'::text, 'locked'::text]))),
+    CONSTRAINT notebook_entries_title_check CHECK ((TRIM(BOTH FROM title) <> ''::text))
+);
+
+ALTER TABLE ONLY app_eln.notebook_entries FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: notebook_entries; Type: VIEW; Schema: app_core; Owner: -
+--
+
+CREATE VIEW app_core.notebook_entries AS
+ SELECT entry_id,
+    entry_key,
+    title,
+    description,
+    primary_scope_id,
+    status,
+    metadata,
+    submitted_at,
+    submitted_by,
+    locked_at,
+    locked_by,
+    created_at,
+    created_by,
+    updated_at,
+    updated_by
+   FROM app_eln.notebook_entries;
+
+
+--
+-- Name: VIEW notebook_entries; Type: COMMENT; Schema: app_core; Owner: -
+--
+
+COMMENT ON VIEW app_core.notebook_entries IS '@omit';
+
+
+--
+-- Name: notebook_entry_versions; Type: TABLE; Schema: app_eln; Owner: -
+--
+
+CREATE TABLE app_eln.notebook_entry_versions (
+    version_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    entry_id uuid NOT NULL,
+    version_number integer NOT NULL,
+    notebook_json jsonb NOT NULL,
+    checksum text NOT NULL,
+    note text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    created_by uuid DEFAULT app_security.current_actor_id() NOT NULL,
+    CONSTRAINT notebook_entry_versions_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT notebook_entry_versions_notebook_json_check CHECK ((jsonb_typeof(notebook_json) = ANY (ARRAY['object'::text, 'array'::text]))),
+    CONSTRAINT notebook_entry_versions_version_number_check CHECK ((version_number > 0))
+);
+
+ALTER TABLE ONLY app_eln.notebook_entry_versions FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: notebook_entry_versions; Type: VIEW; Schema: app_core; Owner: -
+--
+
+CREATE VIEW app_core.notebook_entry_versions AS
+ SELECT version_id,
+    entry_id,
+    version_number,
+    notebook_json,
+    checksum,
+    note,
+    metadata,
+    created_at,
+    created_by
+   FROM app_eln.notebook_entry_versions;
+
+
+--
+-- Name: VIEW notebook_entry_versions; Type: COMMENT; Schema: app_core; Owner: -
+--
+
+COMMENT ON VIEW app_core.notebook_entry_versions IS '@omit';
+
+
+--
 -- Name: roles; Type: TABLE; Schema: app_core; Owner: -
 --
 
@@ -3467,6 +3867,77 @@ CREATE VIEW app_core.v_labware_inventory AS
 
 
 --
+-- Name: v_notebook_entry_overview; Type: VIEW; Schema: app_eln; Owner: -
+--
+
+CREATE VIEW app_eln.v_notebook_entry_overview AS
+ SELECT e.entry_id,
+    e.entry_key,
+    e.title,
+    e.description,
+    e.status,
+    e.primary_scope_id,
+    s.scope_key AS primary_scope_key,
+    s.display_name AS primary_scope_name,
+    e.metadata,
+    e.submitted_at,
+    e.submitted_by,
+    e.locked_at,
+    e.locked_by,
+    e.created_at,
+    e.created_by,
+    e.updated_at,
+    e.updated_by,
+    latest.version_number AS latest_version,
+    latest.created_at AS latest_version_created_at,
+    latest.created_by AS latest_version_created_by
+   FROM ((app_eln.notebook_entries e
+     LEFT JOIN app_security.scopes s ON ((s.scope_id = e.primary_scope_id)))
+     LEFT JOIN LATERAL ( SELECT v.version_number,
+            v.created_at,
+            v.created_by
+           FROM app_eln.notebook_entry_versions v
+          WHERE (v.entry_id = e.entry_id)
+          ORDER BY v.version_number DESC
+         LIMIT 1) latest ON (true));
+
+
+--
+-- Name: v_notebook_entry_overview; Type: VIEW; Schema: app_core; Owner: -
+--
+
+CREATE VIEW app_core.v_notebook_entry_overview AS
+ SELECT entry_id,
+    entry_key,
+    title,
+    description,
+    status,
+    primary_scope_id,
+    primary_scope_key,
+    primary_scope_name,
+    metadata,
+    submitted_at,
+    submitted_by,
+    locked_at,
+    locked_by,
+    created_at,
+    created_by,
+    updated_at,
+    updated_by,
+    latest_version,
+    latest_version_created_at,
+    latest_version_created_by
+   FROM app_eln.v_notebook_entry_overview;
+
+
+--
+-- Name: VIEW v_notebook_entry_overview; Type: COMMENT; Schema: app_core; Owner: -
+--
+
+COMMENT ON VIEW app_core.v_notebook_entry_overview IS '@omit';
+
+
+--
 -- Name: v_project_access_overview; Type: VIEW; Schema: app_core; Owner: -
 --
 
@@ -3942,6 +4413,24 @@ CREATE VIEW app_core.v_transaction_context_activity AS
 
 
 --
+-- Name: notebook_entry_scopes; Type: TABLE; Schema: app_eln; Owner: -
+--
+
+CREATE TABLE app_eln.notebook_entry_scopes (
+    entry_id uuid NOT NULL,
+    scope_id uuid NOT NULL,
+    relationship text DEFAULT 'primary'::text NOT NULL,
+    assigned_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    assigned_by uuid DEFAULT app_security.current_actor_id() NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT notebook_entry_scopes_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+    CONSTRAINT notebook_entry_scopes_relationship_check CHECK ((relationship = ANY (ARRAY['primary'::text, 'supplementary'::text, 'witness'::text, 'reference'::text])))
+);
+
+ALTER TABLE ONLY app_eln.notebook_entry_scopes FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: container_slot_definitions; Type: TABLE; Schema: app_provenance; Owner: -
 --
 
@@ -4245,6 +4734,46 @@ ALTER TABLE ONLY app_core.users
 
 
 --
+-- Name: notebook_entries notebook_entries_entry_key_key; Type: CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_entry_key_key UNIQUE (entry_key);
+
+
+--
+-- Name: notebook_entries notebook_entries_pkey; Type: CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_pkey PRIMARY KEY (entry_id);
+
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_pkey; Type: CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_scopes
+    ADD CONSTRAINT notebook_entry_scopes_pkey PRIMARY KEY (entry_id, scope_id, relationship);
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_entry_id_version_number_key; Type: CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_versions
+    ADD CONSTRAINT notebook_entry_versions_entry_id_version_number_key UNIQUE (entry_id, version_number);
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_pkey; Type: CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_versions
+    ADD CONSTRAINT notebook_entry_versions_pkey PRIMARY KEY (version_id);
+
+
+--
 -- Name: artefact_relationships artefact_relationships_parent_artefact_id_child_artefact_id_key; Type: CONSTRAINT; Schema: app_provenance; Owner: -
 --
 
@@ -4517,6 +5046,27 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: idx_notebook_entries_scope; Type: INDEX; Schema: app_eln; Owner: -
+--
+
+CREATE INDEX idx_notebook_entries_scope ON app_eln.notebook_entries USING btree (primary_scope_id);
+
+
+--
+-- Name: idx_notebook_entry_scopes_scope; Type: INDEX; Schema: app_eln; Owner: -
+--
+
+CREATE INDEX idx_notebook_entry_scopes_scope ON app_eln.notebook_entry_scopes USING btree (scope_id);
+
+
+--
+-- Name: idx_notebook_entry_versions_entry; Type: INDEX; Schema: app_eln; Owner: -
+--
+
+CREATE INDEX idx_notebook_entry_versions_entry ON app_eln.notebook_entry_versions USING btree (entry_id, version_number DESC);
+
+
+--
 -- Name: idx_artefact_scopes_scope; Type: INDEX; Schema: app_provenance; Owner: -
 --
 
@@ -4731,6 +5281,55 @@ CREATE TRIGGER trg_audit_app_core_users AFTER INSERT OR DELETE OR UPDATE ON app_
 --
 
 CREATE TRIGGER trg_touch_users BEFORE UPDATE ON app_core.users FOR EACH ROW EXECUTE FUNCTION app_security.touch_updated_at();
+
+
+--
+-- Name: notebook_entries trg_assign_primary_scope; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_assign_primary_scope AFTER INSERT ON app_eln.notebook_entries FOR EACH ROW EXECUTE FUNCTION app_eln.tg_ensure_primary_scope();
+
+
+--
+-- Name: notebook_entries trg_audit_notebook_entries; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_audit_notebook_entries AFTER INSERT OR DELETE OR UPDATE ON app_eln.notebook_entries FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
+
+
+--
+-- Name: notebook_entry_scopes trg_audit_notebook_entry_scopes; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_audit_notebook_entry_scopes AFTER INSERT OR DELETE OR UPDATE ON app_eln.notebook_entry_scopes FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
+
+
+--
+-- Name: notebook_entry_versions trg_audit_notebook_entry_versions; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_audit_notebook_entry_versions AFTER INSERT OR DELETE OR UPDATE ON app_eln.notebook_entry_versions FOR EACH ROW EXECUTE FUNCTION app_security.record_audit();
+
+
+--
+-- Name: notebook_entries trg_enforce_notebook_entry_status; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_enforce_notebook_entry_status BEFORE INSERT OR UPDATE ON app_eln.notebook_entries FOR EACH ROW EXECUTE FUNCTION app_eln.tg_enforce_entry_status();
+
+
+--
+-- Name: notebook_entry_versions trg_prepare_notebook_version; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_prepare_notebook_version BEFORE INSERT ON app_eln.notebook_entry_versions FOR EACH ROW EXECUTE FUNCTION app_eln.tg_prepare_notebook_version();
+
+
+--
+-- Name: notebook_entries trg_touch_notebook_entries; Type: TRIGGER; Schema: app_eln; Owner: -
+--
+
+CREATE TRIGGER trg_touch_notebook_entries BEFORE UPDATE ON app_eln.notebook_entries FOR EACH ROW EXECUTE FUNCTION app_eln.tg_touch_notebook_entry();
 
 
 --
@@ -4959,6 +5558,86 @@ ALTER TABLE ONLY app_core.user_roles
 
 ALTER TABLE ONLY app_core.users
     ADD CONSTRAINT users_default_role_fkey FOREIGN KEY (default_role) REFERENCES app_core.roles(role_name);
+
+
+--
+-- Name: notebook_entries notebook_entries_created_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_created_by_fkey FOREIGN KEY (created_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entries notebook_entries_locked_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_locked_by_fkey FOREIGN KEY (locked_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entries notebook_entries_primary_scope_id_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_primary_scope_id_fkey FOREIGN KEY (primary_scope_id) REFERENCES app_security.scopes(scope_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: notebook_entries notebook_entries_submitted_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entries notebook_entries_updated_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entries
+    ADD CONSTRAINT notebook_entries_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_assigned_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_scopes
+    ADD CONSTRAINT notebook_entry_scopes_assigned_by_fkey FOREIGN KEY (assigned_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_entry_id_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_scopes
+    ADD CONSTRAINT notebook_entry_scopes_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES app_eln.notebook_entries(entry_id) ON DELETE CASCADE;
+
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_scope_id_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_scopes
+    ADD CONSTRAINT notebook_entry_scopes_scope_id_fkey FOREIGN KEY (scope_id) REFERENCES app_security.scopes(scope_id) ON DELETE CASCADE;
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_created_by_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_versions
+    ADD CONSTRAINT notebook_entry_versions_created_by_fkey FOREIGN KEY (created_by) REFERENCES app_core.users(id);
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_entry_id_fkey; Type: FK CONSTRAINT; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE ONLY app_eln.notebook_entry_versions
+    ADD CONSTRAINT notebook_entry_versions_entry_id_fkey FOREIGN KEY (entry_id) REFERENCES app_eln.notebook_entries(entry_id) ON DELETE CASCADE;
 
 
 --
@@ -5431,6 +6110,87 @@ CREATE POLICY users_self_or_admin_read ON app_core.users FOR SELECT USING ((app_
 
 
 --
+-- Name: notebook_entries; Type: ROW SECURITY; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE app_eln.notebook_entries ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notebook_entries notebook_entries_delete; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entries_delete ON app_eln.notebook_entries FOR DELETE USING (app_security.has_role('app_admin'::text));
+
+
+--
+-- Name: notebook_entries notebook_entries_insert; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entries_insert ON app_eln.notebook_entries FOR INSERT WITH CHECK ((app_security.has_role('app_admin'::text) OR app_security.actor_has_scope(primary_scope_id, ARRAY['app_researcher'::text, 'app_operator'::text, 'app_admin'::text])));
+
+
+--
+-- Name: notebook_entries notebook_entries_select; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entries_select ON app_eln.notebook_entries FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_eln.can_access_entry(entry_id) OR app_security.actor_has_scope(primary_scope_id)));
+
+
+--
+-- Name: notebook_entries notebook_entries_update; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entries_update ON app_eln.notebook_entries FOR UPDATE USING ((app_security.has_role('app_admin'::text) OR app_eln.can_access_entry(entry_id, ARRAY['app_researcher'::text, 'app_operator'::text, 'app_admin'::text]))) WITH CHECK ((app_security.has_role('app_admin'::text) OR app_eln.can_access_entry(entry_id, ARRAY['app_researcher'::text, 'app_operator'::text, 'app_admin'::text])));
+
+
+--
+-- Name: notebook_entry_scopes; Type: ROW SECURITY; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE app_eln.notebook_entry_scopes ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_modify; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entry_scopes_modify ON app_eln.notebook_entry_scopes USING (app_security.has_role('app_admin'::text)) WITH CHECK (app_security.has_role('app_admin'::text));
+
+
+--
+-- Name: notebook_entry_scopes notebook_entry_scopes_select; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entry_scopes_select ON app_eln.notebook_entry_scopes FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_eln.can_access_entry(entry_id)));
+
+
+--
+-- Name: notebook_entry_versions; Type: ROW SECURITY; Schema: app_eln; Owner: -
+--
+
+ALTER TABLE app_eln.notebook_entry_versions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_delete; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entry_versions_delete ON app_eln.notebook_entry_versions FOR DELETE USING (app_security.has_role('app_admin'::text));
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_insert; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entry_versions_insert ON app_eln.notebook_entry_versions FOR INSERT WITH CHECK ((app_security.has_role('app_admin'::text) OR app_eln.can_edit_entry(entry_id)));
+
+
+--
+-- Name: notebook_entry_versions notebook_entry_versions_select; Type: POLICY; Schema: app_eln; Owner: -
+--
+
+CREATE POLICY notebook_entry_versions_select ON app_eln.notebook_entry_versions FOR SELECT USING ((app_security.has_role('app_admin'::text) OR app_eln.can_access_entry(entry_id)));
+
+
+--
 -- Name: artefact_relationships; Type: ROW SECURITY; Schema: app_provenance; Owner: -
 --
 
@@ -5846,4 +6606,11 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20251010016000'),
     ('20251010017000'),
     ('20251010017100'),
-    ('20251010017200');
+    ('20251010017200'),
+    ('20251010018000'),
+    ('20251010018100'),
+    ('20251010018200'),
+    ('20251010018300'),
+    ('20251010018400'),
+    ('20251010018500'),
+    ('20251010018600');

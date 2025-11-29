@@ -5,7 +5,7 @@
     "title": "PostgREST API",
     "version": "13.0.7"
   },
-  "host": "localhost:6000",
+  "host": "localhost:7100",
   "basePath": "/",
   "schemes": [
     "http"
@@ -489,6 +489,189 @@
         ]
       }
     },
+    "/notebook_entry_versions": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.notebook_json"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.checksum"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.note"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_by"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/notebook_entry_versions"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entry_versions"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.notebook_entry_versions"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entry_versions"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.notebook_json"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.checksum"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.note"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_by"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entry_versions"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.version_number"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.notebook_json"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.checksum"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.note"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entry_versions.created_by"
+          },
+          {
+            "$ref": "#/parameters/body.notebook_entry_versions"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entry_versions"
+        ]
+      }
+    },
     "/v_labware_inventory": {
       "get": {
         "parameters": [
@@ -557,6 +740,243 @@
         },
         "tags": [
           "v_labware_inventory"
+        ]
+      }
+    },
+    "/notebook_entries": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_key"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.primary_scope_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_by"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/notebook_entries"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entries"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/body.notebook_entries"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/preferPost"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entries"
+        ]
+      },
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_key"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.primary_scope_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_by"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entries"
+        ]
+      },
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.entry_key"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.primary_scope_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.submitted_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.locked_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.notebook_entries.updated_by"
+          },
+          {
+            "$ref": "#/parameters/body.notebook_entries"
+          },
+          {
+            "$ref": "#/parameters/preferReturn"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "notebook_entries"
         ]
       }
     },
@@ -1200,6 +1620,111 @@
         ]
       }
     },
+    "/v_notebook_entry_overview": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.entry_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.entry_key"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.title"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.description"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.status"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.primary_scope_id"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.primary_scope_key"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.primary_scope_name"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.metadata"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.submitted_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.submitted_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.locked_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.locked_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.created_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.updated_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.updated_by"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.latest_version"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.latest_version_created_at"
+          },
+          {
+            "$ref": "#/parameters/rowFilter.v_notebook_entry_overview.latest_version_created_by"
+          },
+          {
+            "$ref": "#/parameters/select"
+          },
+          {
+            "$ref": "#/parameters/order"
+          },
+          {
+            "$ref": "#/parameters/range"
+          },
+          {
+            "$ref": "#/parameters/rangeUnit"
+          },
+          {
+            "$ref": "#/parameters/offset"
+          },
+          {
+            "$ref": "#/parameters/limit"
+          },
+          {
+            "$ref": "#/parameters/preferCount"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "items": {
+                "$ref": "#/definitions/v_notebook_entry_overview"
+              },
+              "type": "array"
+            }
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        },
+        "summary": "@omit",
+        "tags": [
+          "v_notebook_entry_overview"
+        ]
+      }
+    },
     "/v_storage_tree": {
       "get": {
         "parameters": [
@@ -1411,6 +1936,45 @@
         },
         "tags": [
           "user_roles"
+        ]
+      }
+    },
+    "/rpc/actor_accessible_scopes": {
+      "post": {
+        "parameters": [
+          {
+            "in": "body",
+            "name": "args",
+            "required": true,
+            "schema": {
+              "properties": {
+                "p_scope_types": {
+                  "format": "text[]",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "$ref": "#/parameters/preferParams"
+          }
+        ],
+        "produces": [
+          "application/json",
+          "application/vnd.pgrst.object+json;nulls=stripped",
+          "application/vnd.pgrst.object+json"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "(rpc) actor_accessible_scopes"
         ]
       }
     },
@@ -7511,6 +8075,49 @@
       },
       "type": "object"
     },
+    "notebook_entry_versions": {
+      "description": "@omit",
+      "properties": {
+        "version_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "entry_id": {
+          "description": "Note:\nThis is a Foreign Key to `notebook_entries.entry_id`.<fk table='notebook_entries' column='entry_id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "version_number": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "notebook_json": {
+          "format": "jsonb"
+        },
+        "checksum": {
+          "format": "text",
+          "type": "string"
+        },
+        "note": {
+          "format": "text",
+          "type": "string"
+        },
+        "metadata": {
+          "format": "jsonb"
+        },
+        "created_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "v_labware_inventory": {
       "properties": {
         "labware_id": {
@@ -7549,6 +8156,77 @@
         },
         "active_samples": {
           "format": "jsonb"
+        }
+      },
+      "type": "object"
+    },
+    "notebook_entries": {
+      "description": "@omit",
+      "properties": {
+        "entry_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "entry_key": {
+          "format": "text",
+          "type": "string"
+        },
+        "title": {
+          "format": "text",
+          "type": "string"
+        },
+        "description": {
+          "format": "text",
+          "type": "string"
+        },
+        "primary_scope_id": {
+          "description": "Note:\nThis is a Foreign Key to `v_sample_lineage.child_project_id`.<fk table='v_sample_lineage' column='child_project_id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "format": "text",
+          "type": "string"
+        },
+        "metadata": {
+          "format": "jsonb"
+        },
+        "submitted_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "submitted_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "locked_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "locked_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
         }
       },
       "type": "object"
@@ -7673,6 +8351,7 @@
     "v_sample_lineage": {
       "properties": {
         "parent_sample_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7722,7 +8401,6 @@
           "type": "string"
         },
         "child_labware_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7813,6 +8491,7 @@
     "v_labware_contents": {
       "properties": {
         "labware_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7833,7 +8512,6 @@
           "type": "string"
         },
         "sample_id": {
-          "description": "Note:\nThis is a Primary Key.<pk/>",
           "format": "uuid",
           "type": "string"
         },
@@ -7860,6 +8538,98 @@
         },
         "storage_path": {
           "format": "text",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "v_notebook_entry_overview": {
+      "description": "@omit",
+      "properties": {
+        "entry_id": {
+          "description": "Note:\nThis is a Primary Key.<pk/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "entry_key": {
+          "format": "text",
+          "type": "string"
+        },
+        "title": {
+          "format": "text",
+          "type": "string"
+        },
+        "description": {
+          "format": "text",
+          "type": "string"
+        },
+        "status": {
+          "format": "text",
+          "type": "string"
+        },
+        "primary_scope_id": {
+          "description": "Note:\nThis is a Foreign Key to `v_sample_lineage.child_project_id`.<fk table='v_sample_lineage' column='child_project_id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "primary_scope_key": {
+          "format": "text",
+          "type": "string"
+        },
+        "primary_scope_name": {
+          "format": "text",
+          "type": "string"
+        },
+        "metadata": {
+          "format": "jsonb"
+        },
+        "submitted_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "submitted_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "locked_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "locked_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "created_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "updated_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
+          "type": "string"
+        },
+        "latest_version": {
+          "format": "integer",
+          "type": "integer"
+        },
+        "latest_version_created_at": {
+          "format": "timestamp with time zone",
+          "type": "string"
+        },
+        "latest_version_created_by": {
+          "description": "Note:\nThis is a Foreign Key to `users.id`.<fk table='users' column='id'/>",
+          "format": "uuid",
           "type": "string"
         }
       },
@@ -9743,6 +10513,69 @@
       "in": "query",
       "type": "string"
     },
+    "body.notebook_entry_versions": {
+      "name": "notebook_entry_versions",
+      "description": "notebook_entry_versions",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/notebook_entry_versions"
+      }
+    },
+    "rowFilter.notebook_entry_versions.version_id": {
+      "name": "version_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.entry_id": {
+      "name": "entry_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.version_number": {
+      "name": "version_number",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.notebook_json": {
+      "name": "notebook_json",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.checksum": {
+      "name": "checksum",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.note": {
+      "name": "note",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.metadata": {
+      "name": "metadata",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entry_versions.created_by": {
+      "name": "created_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
     "body.v_labware_inventory": {
       "name": "v_labware_inventory",
       "description": "v_labware_inventory",
@@ -9802,6 +10635,105 @@
     },
     "rowFilter.v_labware_inventory.active_samples": {
       "name": "active_samples",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.notebook_entries": {
+      "name": "notebook_entries",
+      "description": "notebook_entries",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/notebook_entries"
+      }
+    },
+    "rowFilter.notebook_entries.entry_id": {
+      "name": "entry_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.entry_key": {
+      "name": "entry_key",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.title": {
+      "name": "title",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.description": {
+      "name": "description",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.primary_scope_id": {
+      "name": "primary_scope_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.status": {
+      "name": "status",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.metadata": {
+      "name": "metadata",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.submitted_at": {
+      "name": "submitted_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.submitted_by": {
+      "name": "submitted_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.locked_at": {
+      "name": "locked_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.locked_by": {
+      "name": "locked_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.created_by": {
+      "name": "created_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.updated_at": {
+      "name": "updated_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.notebook_entries.updated_by": {
+      "name": "updated_by",
       "required": false,
       "in": "query",
       "type": "string"
@@ -10231,6 +11163,135 @@
     },
     "rowFilter.v_labware_contents.storage_path": {
       "name": "storage_path",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "body.v_notebook_entry_overview": {
+      "name": "v_notebook_entry_overview",
+      "description": "v_notebook_entry_overview",
+      "required": false,
+      "in": "body",
+      "schema": {
+        "$ref": "#/definitions/v_notebook_entry_overview"
+      }
+    },
+    "rowFilter.v_notebook_entry_overview.entry_id": {
+      "name": "entry_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.entry_key": {
+      "name": "entry_key",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.title": {
+      "name": "title",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.description": {
+      "name": "description",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.status": {
+      "name": "status",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.primary_scope_id": {
+      "name": "primary_scope_id",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.primary_scope_key": {
+      "name": "primary_scope_key",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.primary_scope_name": {
+      "name": "primary_scope_name",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.metadata": {
+      "name": "metadata",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.submitted_at": {
+      "name": "submitted_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.submitted_by": {
+      "name": "submitted_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.locked_at": {
+      "name": "locked_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.locked_by": {
+      "name": "locked_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.created_at": {
+      "name": "created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.created_by": {
+      "name": "created_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.updated_at": {
+      "name": "updated_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.updated_by": {
+      "name": "updated_by",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.latest_version": {
+      "name": "latest_version",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.latest_version_created_at": {
+      "name": "latest_version_created_at",
+      "required": false,
+      "in": "query",
+      "type": "string"
+    },
+    "rowFilter.v_notebook_entry_overview.latest_version_created_by": {
+      "name": "latest_version_created_by",
       "required": false,
       "in": "query",
       "type": "string"

@@ -7,7 +7,7 @@ const connectionString =
   process.env.DATABASE_URL ||
   "postgres://postgraphile_authenticator:postgraphilepass@db:5432/lims";
 
-const schemaList = (process.env.POSTGRAPHILE_SCHEMAS || "app_core")
+const schemaList = (process.env.POSTGRAPHILE_SCHEMAS || "app_core,app_provenance,app_eln")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

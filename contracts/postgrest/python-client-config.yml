@@ -1,0 +1,5 @@
+project_name_override: crazylims-postgrest-client
+package_name_override: crazylims_postgrest_client
+package_version_override: "0.1.0"
+description: Python client generated from contracts/postgrest/openapi.v3.json
+class_overrides: {}

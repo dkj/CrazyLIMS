@@ -12,6 +12,8 @@ import { DataTable } from "./components/DataTable";
 import type { Column } from "./components/DataTable";
 import { SampleProvenanceExplorer } from "./components/SampleProvenanceExplorer";
 import { StorageExplorer } from "./components/StorageExplorer";
+import { NotebookWorkbench } from "./components/NotebookWorkbench";
+import { NotebookIframeDemo } from "./components/NotebookIframeDemo";
 import type {
   SampleOverviewRow,
   LabwareContentRow,
@@ -662,6 +664,21 @@ const navigateToSampleIfVisible = useCallback(
 
   const sections: SectionDefinition[] = [
     { path: "/overview", label: "Overview", element: overviewSection },
+    {
+      path: "/eln",
+      label: "ELN",
+      element: (
+        <NotebookWorkbench
+          token={token}
+          apiBase={API_BASE}
+        />
+      )
+    },
+    {
+      path: "/eln/embed-test",
+      label: "ELN Demo",
+      element: <NotebookIframeDemo token={token} apiBase={API_BASE} />
+    },
     { path: "/samples", label: "Samples", element: samplesSection },
     {
       path: "/transfers",

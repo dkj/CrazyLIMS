@@ -1,5 +1,7 @@
 # Overarching Implementation Plan
 
+> Status: historical roadmap kept for context. Superseded by the Phase 1/2 Redux plans and the doc map in `docs/doc-index.md`.
+
 ## Phase 0 – Environment & Governance
 - Stand up devcontainer services for PostgreSQL, PostgREST, and PostGraphile.
 - Add migration tooling and seed runners; wire CI to apply migrations and run smoke queries.

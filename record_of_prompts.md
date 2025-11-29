@@ -200,6 +200,35 @@ As an expert software developer who favours clarity through minimal architecture
 
 You are an expert developer who creates code and tests that others find easy to understand. We need to more fully test the Rest API functionality. Consider the "User Stories" of section 2 in the "security-access-control-plan-phase1-and-phase2-security-redux.md" file: we will repeat those stories but with two new different research projects, a new separate ops lab, and new input artefacts and new associated downstream artefacts, but which broadly mirror those created directly n the DB for earlier test.  So, first in the testing the admin user should  be used with the rest API to create the new studies and users with appropriate scopes/permissions. Then new JWTs created for those users as required, and the appropriate user uses the rest API to  represent the actions outlined in these user stories. Again we should check what we intended to be created has been. That things can be seen by users we expect to see them, and not seem by other users.
 
+
+
+# review state - especially python basis of ELN
+
+Considering the docs in this project to create a LIMS/ELN system, review the state of the project and the progress so far. Are the foundations solid and consistent? Are they concise and elegant? Are the stories detailed enough? Is the data model suitable (consider should it operate in a more write-only and create derivative records manner, or is the current balance appropriate). Should we refine the DB fundamentals, or plug on with ELN delvelopment? Bear in mind that for ELN dev we could consider automatically generating a Python API from the exported openapi interface, and then try using that programatically from the embedded ELN interface. Beyond that we will need to consider how to make that python jupyter based interface increasing lab-user friendly.
+
+## create
+
+Python client generation: use the existing contracts/postgrest/openapi.json with openapi-python-client or datamodel-code-generator to produce a thin client; package it for Pyodide (pure-Python, httpx + pyodide-http) and auto-inject it into the JupyterLite bundle so notebooks can call PostgREST with transaction contexts (keep in mind the authentication required).
+
+Add tests to ensure the python client works.
+Add tests to the gui which import and use this in the jupyterlite based ELN system.
+
+### review
+ - Please run the Playwright UI suite too, `make test/ui`
+ - The ELN tests should try to use the newly created crazylims python rest client in the cells of the notebook. Is this happening? If so, where?
+ - Extend the Playwright tests to test crazylims_postgrest_client use in the cells of the ELN.
+ - Why is the httpx transport mocked?
+ - We need to test that the crazylims_postgrest_client can actually use the rest endpoint (or the ui server's rev-proxying of that rest endpoint) - like the rest of the UI front end can access the rest service.
+ - How about `client = httpx.AsyncClient(transport=httpx.FetchTransport())` to access the rest endpoint within pyodide? Is that simpler?
+   - If that would be good practice, add this upgrade and adjustment to a TODO in an approrpriate document (exisiting or created)
+ - The manual grabbing of a token in the tests `const res = await fetch("/tokens/admin.jwt");` would not be available in a realistic web UI. I believe the auth for the pyodide ELN must derive from the same mechanism as the rest of the web UI - as happens for example after `await personaSelect.selectOption("admin");` Consider if this is true. If so, ensure there is an appropriate mechanism so that the tests using the python API in the embedded pyodide ELN can succeed.
+ - The packages to use the rest api in the ELN embedded jupyterlite should be preinstalled for the pyodide python we use - there should be no need to run `await micropip.install` in the ELN.
+ - We need to consider the end user - they will not know how to get the origin & apiBase, nor the token. There need to be defaults for build_authenticated_client which work in the ELN embedded jupyterlite pyodide somehow.
+ - Hmmm, whilst the ELN page works okay, the ELN Demo page reports `ModuleNotFoundError: No module named 'crazylims_postgrest_client'` when I try `from crazylims_postgrest_client.pyodide import build_authenticated_client`
+
+
+
+
 ### Later
 
 
