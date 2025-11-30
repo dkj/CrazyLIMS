@@ -1,8 +1,9 @@
 """
 Helper utilities for running the generated client inside Pyodide/JupyterLite.
 
-This module patches httpx to run over the browser fetch API via ``pyodide-http``
-and builds an AuthenticatedClient using auth context passed from the host page.
+This module builds a Pyodide-friendly AuthenticatedClient that prefers
+``httpx.FetchTransport`` (falling back to the legacy ``pyodide-http`` patch)
+and wires auth context from the host page.
 """
 from __future__ import annotations
 
@@ -22,15 +23,25 @@ def _patch_httpx() -> None:
     global _PATCHED
     if _PATCHED:
         return
-    pyodide_http.patch_all()
+    if not hasattr(httpx, "FetchTransport"):
+        # Only patch when the native fetch transport is unavailable.
+        pyodide_http.patch_all()
     _PATCHED = True
 
 
-def _pyfetch_transport() -> Optional[httpx.MockTransport]:
+def _pyfetch_transport() -> Optional[httpx.BaseTransport]:
     """
     Provide an httpx transport that bridges to the browser fetch API via pyodide.http.pyfetch.
     Returns None when running outside Pyodide.
     """
+    fetch_transport = getattr(httpx, "FetchTransport", None)
+    if fetch_transport is not None:
+        try:
+            return fetch_transport()
+        except Exception:
+            # Fall back to the manual bridge if instantiation fails.
+            pass
+
     try:
         from pyodide.http import pyfetch
     except Exception:

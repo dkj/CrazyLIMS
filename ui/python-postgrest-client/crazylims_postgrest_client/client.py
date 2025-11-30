@@ -1,5 +1,14 @@
-import ssl
-from typing import Any, Union, Optional
+import importlib
+import importlib.util
+from typing import Any, Optional, Union
+
+ssl_spec = importlib.util.find_spec("ssl")
+if ssl_spec is not None:
+    import ssl  # type: ignore
+    SSLVerifyType = Union[str, bool, ssl.SSLContext]
+else:
+    ssl = None  # type: ignore
+    SSLVerifyType = Union[str, bool, None]
 
 from attrs import define, field, evolve
 import httpx
@@ -41,7 +50,7 @@ class Client:
     _cookies: dict[str, str] = field(factory=dict, kw_only=True, alias="cookies")
     _headers: dict[str, str] = field(factory=dict, kw_only=True, alias="headers")
     _timeout: Optional[httpx.Timeout] = field(default=None, kw_only=True, alias="timeout")
-    _verify_ssl: Union[str, bool, ssl.SSLContext] = field(default=True, kw_only=True, alias="verify_ssl")
+    _verify_ssl: SSLVerifyType = field(default=True, kw_only=True, alias="verify_ssl")
     _follow_redirects: bool = field(default=False, kw_only=True, alias="follow_redirects")
     _httpx_args: dict[str, Any] = field(factory=dict, kw_only=True, alias="httpx_args")
     _client: Optional[httpx.Client] = field(default=None, init=False)
@@ -171,7 +180,7 @@ class AuthenticatedClient:
     _cookies: dict[str, str] = field(factory=dict, kw_only=True, alias="cookies")
     _headers: dict[str, str] = field(factory=dict, kw_only=True, alias="headers")
     _timeout: Optional[httpx.Timeout] = field(default=None, kw_only=True, alias="timeout")
-    _verify_ssl: Union[str, bool, ssl.SSLContext] = field(default=True, kw_only=True, alias="verify_ssl")
+    _verify_ssl: SSLVerifyType = field(default=True, kw_only=True, alias="verify_ssl")
     _follow_redirects: bool = field(default=False, kw_only=True, alias="follow_redirects")
     _httpx_args: dict[str, Any] = field(factory=dict, kw_only=True, alias="httpx_args")
     _client: Optional[httpx.Client] = field(default=None, init=False)

@@ -10,10 +10,11 @@ DIST_LITE_DIR="$REPO_ROOT/ui/dist/eln/lite"
 CONTENTS_DIR="$REPO_ROOT/ui/jupyterlite-contents"
 PY_CLIENT_DIR="$REPO_ROOT/ui/python-postgrest-client"
 PIP_WHEEL_DIR="$OUTPUT_DIR/pypi"
+PYODIDE_EXTRA_WHEELS=("comm==0.2.2")
 
-JUPYTERLITE_VERSION="0.6.4"
-PYODIDE_KERNEL_VERSION="0.6.1"
-PYODIDE_VERSION="0.25.1"
+JUPYTERLITE_VERSION="0.7.0"
+PYODIDE_KERNEL_VERSION="0.7.0"
+PYODIDE_VERSION="0.29.0"
 PYODIDE_ARCHIVE="pyodide-${PYODIDE_VERSION}.tar.bz2"
 PYODIDE_URL="https://github.com/pyodide/pyodide/releases/download/${PYODIDE_VERSION}/${PYODIDE_ARCHIVE}"
 PYODIDE_CACHE="$CACHE_DIR/${PYODIDE_ARCHIVE}"
@@ -78,6 +79,9 @@ if [ ! -d "$PY_CLIENT_DIR" ]; then
 fi
 
 "$PYTHON" -m pip wheel "$PY_CLIENT_DIR" --wheel-dir "$PIP_WHEEL_DIR" >/dev/null
+if [ "${#PYODIDE_EXTRA_WHEELS[@]}" -gt 0 ]; then
+  "$PYTHON" -m pip wheel "${PYODIDE_EXTRA_WHEELS[@]}" --wheel-dir "$PIP_WHEEL_DIR" >/dev/null
+fi
 
 CLIENT_INDEX_SHA=$("$PYTHON" - <<'PY' "$PIP_WHEEL_DIR" "${PIP_WHEEL_DIR}/all.json"
 import hashlib
@@ -160,6 +164,10 @@ for package in required_packages:
     if package not in packages:
         packages.append(package)
 kernel_settings["packages"] = packages
+
+# Pin the Pyodide runtime to the locally vendored bundle instead of the CDN default
+base_pyodide_url = config.get("pyodideUrl", "./pyodide/").rstrip("/")
+kernel_settings["pyodideUrl"] = f"{base_pyodide_url}/pyodide.js"
 
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, indent=2)
