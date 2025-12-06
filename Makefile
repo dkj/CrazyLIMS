@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test jupyterlite/vendor
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test jupyterlite/vendor ui/ready
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -224,8 +224,10 @@ jwt/dev:
 		echo "Copied JWT fixtures into $(JWT_PUBLIC_DIR)"; \
 	fi
 
-ui/dev:
-	docker compose up ui
+ui/ready: jupyterlite/vendor ui/install
+
+ui/dev: ui/ready
+	docker compose up -d ui
 
 ifeq ($(USE_DOCKER),yes)
 ui/install:
