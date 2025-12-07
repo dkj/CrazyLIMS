@@ -5,6 +5,7 @@ db.session.sql
 ops/postgraphile/node_modules/
 ui/node_modules/
 ui/.playwright-installed
+ui/.ui-service-started
 ui/dist/
 ui/test-results/
 ops/examples/jwts/*.jwt

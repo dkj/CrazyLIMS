@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui ui/install db/test jupyterlite/vendor ui/ready
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui db/test jupyterlite/vendor ui/ready
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -224,14 +224,22 @@ jwt/dev:
 		echo "Copied JWT fixtures into $(JWT_PUBLIC_DIR)"; \
 	fi
 
+UI_SERVICE_MARKER := ui/.ui-service-started
+
 ui/ready: jupyterlite/vendor ui/install
 
-ui/dev: ui/ready
-	docker compose up -d ui
-
 ifeq ($(USE_DOCKER),yes)
-ui/install:
-	docker compose run --rm --no-deps ui npm ci
+ui/dev: ui/ready $(UI_SERVICE_MARKER)
+
+ui/install: ui/node_modules/.deps-ready
+
+ui/node_modules/.deps-ready:
+	docker compose down ui >/dev/null 2>&1 || true
+	docker compose run --rm --no-deps ui sh -c 'npm ci && touch node_modules/.deps-ready'
+
+$(UI_SERVICE_MARKER): ui/node_modules/.deps-ready
+	docker compose up -d ui
+	touch $(UI_SERVICE_MARKER)
 
 test/ui: ui/install jupyterlite/vendor
 	docker compose run --rm --no-deps \
@@ -239,6 +247,10 @@ test/ui: ui/install jupyterlite/vendor
 		-e FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
 		ui npm run test:ui
 else
+ui/dev: ui/ready
+	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
+	@echo "UI dev server not managed by make in local mode; run: cd ui && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
 ui/install:
 	$(LOCAL_DEV_HELPER) playwright-install
 

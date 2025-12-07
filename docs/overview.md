@@ -95,6 +95,11 @@ Key helper functions:
 
 All write-capable tables carry audit triggers that call `app_security.require_transaction_context()`; attempts to mutate data without an active context are rejected before touching rows. PostgREST automatically seeds the context for write methods, and PostGraphile does so lazily on the first mutation (the helper backfills the row if needed).
 
+## UI Dev Loop Notes
+
+- `make ui/dev` uses simple stamp files: `ui/node_modules/.deps-ready` marks npm deps installed (built by running `npm ci` in the UI container after stopping it), and `ui/.ui-service-started` marks the most recent container start. If deps are unchanged, make skips reinstalling and avoids unnecessary restarts; when deps are rebuilt, the service is restarted automatically.
+- In non-Docker environments the target prints a hint to run Vite manually (`npm run dev -- --host 0.0.0.0 --port 5173`) after starting the local helper.
+
 ## Transaction Context Quickstart
 
 - Follow `docs/transaction-context-examples.md` for a full walkthrough (POST via PostgREST → inspect context → inspect audit log).
