@@ -26,6 +26,10 @@ make ci
 
 The `dev` service defined in `docker-compose.yml` is used by the devcontainer; when Docker is unavailable the Makefile transparently drives the local helper described below.
 
+The Makefile centralizes the Docker-vs-local choice via `USE_DOCKER` (auto-detected by default) and reuses the same command variables for starting/stopping services, tailing logs, exporting contracts, opening `psql`, and running tests. You can stick with the same targets (`make up`, `make contracts/export`, `make test/security`, etc.) regardless of environment, and `make mode/matrix` will dry-run both modes side by side to confirm parity.
+
+When running inside the devcontainer (docker-outside-docker), `make down` only stops app services to avoid tearing down the parent `dev` container; run `docker compose down -v` from the host shell if you explicitly need to remove volumes and containers.
+
 ### Running without Docker (Codex-friendly)
 
 When Docker cannot be used (e.g. Codespaces-lite/Codex sandboxes), the `scripts/local_dev.sh` helper provisions a private PostgreSQL cluster under `.localdev/`, downloads PostgREST/PostGraphile binaries, and keeps process management out of band from Docker Compose.
@@ -66,6 +70,7 @@ Additional helper commands (the Make targets above will start/stop services as n
 | `make test/ui` | Run the Playwright smoke suite. When Docker is unavailable, `make ui/install` bootstraps npm deps + browsers locally. |
 | `make ci` | Orchestrates reset → db tests → contract export → RBAC + UI smoke tests. |
 | `make ui/dev` | Launch the dev console (persona switcher, security views, ELN workbench preview) on http://localhost:5173. |
+| `make mode/matrix` | Dry-run common targets for both Docker and local modes to compare the generated commands. |
 
 See `Makefile` for additional helper targets (logs, psql shell, etc.).
 
@@ -94,6 +99,11 @@ Key helper functions:
 - `app_security.create_api_token()` – hashes API tokens bound to users and optional API clients.
 
 All write-capable tables carry audit triggers that call `app_security.require_transaction_context()`; attempts to mutate data without an active context are rejected before touching rows. PostgREST automatically seeds the context for write methods, and PostGraphile does so lazily on the first mutation (the helper backfills the row if needed).
+
+## UI Dev Loop Notes
+
+- `make ui/dev` uses simple stamp files: `ui/node_modules/.deps-ready` marks npm deps installed (built by running `npm ci` in the UI container after stopping it), and `ui/.ui-service-started` marks the most recent container start. If deps are unchanged, make skips reinstalling and avoids unnecessary restarts; when deps are rebuilt, the service is restarted automatically.
+- In non-Docker environments the target prints a hint to run Vite manually (`npm run dev -- --host 0.0.0.0 --port 5173`) after starting the local helper.
 
 ## Transaction Context Quickstart
 
