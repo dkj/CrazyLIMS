@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui db/test jupyterlite/vendor ui/ready
+.PHONY: up down logs db-wait db/create db/drop db/migrate db/rollback db/status db/dump db/new db/reset db/redo migrate info psql rest gql contracts/export ci jwt/dev test/security test/rest-story test/ui db/test jupyterlite/vendor ui/ready mode/matrix
 
 DOCKER_COMPOSE_AVAILABLE := $(shell if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then echo yes; else echo no; fi)
 USE_DOCKER ?= $(DOCKER_COMPOSE_AVAILABLE)
@@ -14,6 +14,10 @@ POSTGRAPHILE_PORT ?= $(POSTGRAPHILE_HOST_PORT)
 PGRST_JWT_SECRET ?= dev_jwt_secret_change_me_which_is_at_least_32_characters
 
 ifeq ($(USE_DOCKER),yes)
+# Detect when we're running inside the VS Code devcontainer (docker-outside-docker)
+# so we avoid tearing down the parent container with an aggressive `docker compose down`.
+IN_DEVCONTAINER ?= $(shell if [ -f /.dockerenv ]; then echo yes; else echo no; fi)
+
 POSTGREST_HOST ?= localhost
 POSTGRAPHILE_HOST ?= localhost
 DB_HOST_DISPLAY ?= localhost
@@ -26,6 +30,25 @@ DB_WAIT_CMD ?= docker compose exec -T db pg_isready -U postgres -d postgres
 PSQL_BATCH ?= docker compose exec -T db psql -U dev -d lims
 PSQL_SUPER_CMD ?= docker compose exec -T db psql -U postgres -d postgres
 LOCAL_DEV ?= no
+
+SERVICE_UP_CMD ?= docker compose up -d --build
+SERVICE_DOWN_CMD ?= $(if $(filter yes,$(IN_DEVCONTAINER)),docker compose stop db postgrest postgraphile ui,docker compose down -v)
+SERVICE_LOGS_CMD ?= docker compose logs -f --tail=200
+BACKEND_START_CMD ?= docker compose up -d db postgrest postgraphile >/dev/null
+CONTRACTS_START_CMD ?= docker compose up -d db postgrest postgraphile
+SECURITY_TEST_ENV ?= POSTGREST_URL=$(POSTGREST_BASE_URL) POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL)
+REST_STORY_ENV ?= PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) POSTGREST_URL=$(POSTGREST_BASE_URL)
+DB_TEST_SETUP_CMD ?= docker compose up -d db >/dev/null
+CI_RESET_CMD ?= docker compose stop postgrest postgraphile >/dev/null 2>&1 || true
+CI_START_CMD ?= $(BACKEND_START_CMD)
+CI_RESTART_CMD ?= true
+UI_INSTALL_CMD ?= docker compose down ui >/dev/null 2>&1 || true; \
+	docker compose run --rm --no-deps ui sh -c 'npm ci && touch node_modules/.deps-ready'
+UI_DEV_CMD ?= docker compose up -d ui && touch $(UI_SERVICE_MARKER)
+UI_TEST_CMD ?= docker compose run --rm --no-deps \
+	-e RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
+	-e FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
+	ui npm run test:ui
 else
 LOCAL_DEV ?= yes
 POSTGREST_HOST ?= localhost
@@ -43,6 +66,30 @@ PSQL_CMD ?= PGPASSWORD=$(DB_APP_PASSWORD) psql -h $(DB_HOST) -p $(DB_PORT) -U $(
 PSQL_BATCH ?= PGPASSWORD=$(DB_APP_PASSWORD) psql -h $(DB_HOST) -p $(DB_PORT) -U $(DB_APP_USER) -d $(DB_NAME)
 DB_WAIT_CMD ?= PGUSER=$(DB_SUPERUSER) PGPASSWORD=$(DB_SUPERPASS) pg_isready -h $(DB_HOST) -p $(DB_PORT) -d postgres
 PSQL_SUPER_CMD ?= PGUSER=$(DB_SUPERUSER) PGPASSWORD=$(DB_SUPERPASS) psql -h $(DB_HOST) -p $(DB_PORT) -d postgres
+
+SERVICE_UP_CMD ?= $(LOCAL_DEV_HELPER) start
+SERVICE_DOWN_CMD ?= $(LOCAL_DEV_HELPER) stop
+SERVICE_LOGS_CMD ?= $(LOCAL_DEV_HELPER) logs
+BACKEND_START_CMD ?= $(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+CONTRACTS_START_CMD ?= $(BACKEND_START_CMD)
+SECURITY_TEST_ENV ?= POSTGREST_URL=$(POSTGREST_BASE_URL) \
+	POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL) \
+	DB_HOST=$(DB_HOST) DB_PORT=$(DB_PORT) \
+	DB_APP_USER=$(DB_APP_USER) DB_APP_PASSWORD=$(DB_APP_PASSWORD) DB_NAME=$(DB_NAME)
+REST_STORY_ENV ?= PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) POSTGREST_URL=$(POSTGREST_BASE_URL)
+DB_TEST_SETUP_CMD ?= $(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+CI_RESET_CMD ?= $(LOCAL_DEV_HELPER) reset >/dev/null 2>&1
+CI_START_CMD ?= $(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+CI_RESTART_CMD ?= $(LOCAL_DEV_HELPER) stop >/dev/null 2>&1; $(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+UI_INSTALL_CMD ?= $(LOCAL_DEV_HELPER) playwright-install && mkdir -p ui/node_modules && touch ui/node_modules/.deps-ready
+UI_DEV_CMD ?= $(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true; \
+	echo "UI dev server not managed by make in local mode; run: cd ui && npm install && npm run dev -- --host 0.0.0.0 --port 5173"; \
+	touch $(UI_SERVICE_MARKER)
+UI_TEST_CMD ?= $(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true; \
+	$(MAKE) db-wait >/dev/null; \
+	$(MAKE) jwt/dev >/dev/null; \
+	$(MAKE) jupyterlite/vendor >/dev/null; \
+	cd ui && RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) npm run test:ui
 endif
 
 DBMATE ?= ./ops/db/bin/dbmate
@@ -87,25 +134,14 @@ endif
 REST_URL := http://$(POSTGREST_HOST):$(POSTGREST_PORT)/samples
 GRAPHILE_URL := http://$(POSTGRAPHILE_HOST):$(POSTGRAPHILE_PORT)/graphiql
 
-ifeq ($(USE_DOCKER),yes)
 up:
-	docker compose up -d --build
+	$(SERVICE_UP_CMD)
 
 down:
-	docker compose down -v
+	$(SERVICE_DOWN_CMD)
 
 logs:
-	docker compose logs -f --tail=200
-else
-up:
-	$(LOCAL_DEV_HELPER) start
-
-down:
-	$(LOCAL_DEV_HELPER) stop
-
-logs:
-	$(LOCAL_DEV_HELPER) logs
-endif
+	$(SERVICE_LOGS_CMD)
 
 db-wait:
 	@bash -lc 'until $(DB_WAIT_CMD); do sleep 1; done'
@@ -159,9 +195,8 @@ info:
 psql:
 	$(PSQL_CMD)
 
-ifeq ($(USE_DOCKER),yes)
 contracts/export:
-	docker compose up -d db postgrest postgraphile
+	$(CONTRACTS_START_CMD)
 	$(MAKE) db-wait >/dev/null
 	mkdir -p $(POSTGREST_CONTRACT_DIR) $(POSTGRAPHILE_CONTRACT_DIR)
 	@if [ ! -f "$(POSTGREST_CONTRACT_JWT)" ]; then \
@@ -174,47 +209,22 @@ contracts/export:
 	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Content-Type: application/json" --data-binary @$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL) | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
 	rm -f $(INTROSPECTION_PAYLOAD)
 	@echo "Contracts exported to $(CONTRACTS_DIR)"
-else
-contracts/export:
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
-	$(MAKE) db-wait >/dev/null
-	mkdir -p $(POSTGREST_CONTRACT_DIR) $(POSTGRAPHILE_CONTRACT_DIR)
-	@if [ ! -f "$(POSTGREST_CONTRACT_JWT)" ]; then \
-	        echo "Missing PostgREST contract JWT: $(POSTGREST_CONTRACT_JWT)" >&2; \
-	        exit 1; \
-	fi
-	@./scripts/export_postgrest_openapi.sh "$(POSTGREST_BASE_URL)" "$(POSTGREST_CONTRACT_JWT)" "$(POSTGREST_OPENAPI)"
-	$(MAKE) db-wait >/dev/null
-	jq -n --rawfile query $(INTROSPECTION_QUERY_FILE) '{"query": $$query}' > $(INTROSPECTION_PAYLOAD)
-	curl -sS --retry 12 --retry-delay 1 --retry-all-errors -H "Content-Type: application/json" --data-binary @$(INTROSPECTION_PAYLOAD) $(POSTGRAPHILE_GRAPHQL_URL) | jq . > $(POSTGRAPHILE_SCHEMA_JSON)
-	rm -f $(INTROSPECTION_PAYLOAD)
-	@echo "Contracts exported to $(CONTRACTS_DIR)"
-endif
 
-ifeq ($(USE_DOCKER),yes)
+mode/matrix:
+	./scripts/make_mode_matrix.sh $(TARGETS)
+
 ci:
-	docker compose stop postgrest postgraphile >/dev/null 2>&1 || true
-	$(MAKE) db/reset
-	$(MAKE) db/test
-	$(MAKE) contracts/export
-	$(MAKE) test/security
-	$(MAKE) test/rest-story
-	$(MAKE) test/ui
-else
-ci:
-	$(LOCAL_DEV_HELPER) reset >/dev/null 2>&1
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(CI_RESET_CMD)
+	$(CI_START_CMD)
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) db/reset
 	$(MAKE) db/test
-	$(LOCAL_DEV_HELPER) stop >/dev/null 2>&1
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(CI_RESTART_CMD)
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) contracts/export
 	$(MAKE) test/security
 	$(MAKE) test/rest-story
 	$(MAKE) test/ui
-endif
 
 jwt/dev:
 	PGRST_JWT_SECRET="$(PGRST_JWT_SECRET)" $(JWT_DEV_SCRIPT)
@@ -228,90 +238,39 @@ UI_SERVICE_MARKER := ui/.ui-service-started
 
 ui/ready: jupyterlite/vendor ui/install
 
-ifeq ($(USE_DOCKER),yes)
-ui/dev: ui/ready $(UI_SERVICE_MARKER)
+ui/dev: ui/ready
+	$(UI_DEV_CMD)
 
 ui/install: ui/node_modules/.deps-ready
 
 ui/node_modules/.deps-ready:
-	docker compose down ui >/dev/null 2>&1 || true
-	docker compose run --rm --no-deps ui sh -c 'npm ci && touch node_modules/.deps-ready'
+	$(UI_INSTALL_CMD)
 
 $(UI_SERVICE_MARKER): ui/node_modules/.deps-ready
-	docker compose up -d ui
 	touch $(UI_SERVICE_MARKER)
 
 test/ui: ui/install jupyterlite/vendor
-	docker compose run --rm --no-deps \
-		-e RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
-		-e FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
-		ui npm run test:ui
-else
-ui/dev: ui/ready
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
-	@echo "UI dev server not managed by make in local mode; run: cd ui && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
-
-ui/install:
-	$(LOCAL_DEV_HELPER) playwright-install
-
-test/ui: ui/install
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1 || true
-	$(MAKE) db-wait >/dev/null
-	$(MAKE) jwt/dev >/dev/null
-	$(MAKE) jupyterlite/vendor >/dev/null
-	cd ui && RUN_FULL_ELN_E2E=$(RUN_FULL_ELN_E2E) \
-		FULL_ELN_POSTGREST_URL=$(FULL_ELN_POSTGREST_URL) \
-		npm run test:ui
-endif
+	$(UI_TEST_CMD)
 
 jupyterlite/vendor:
 	./scripts/jupyterlite_vendor.sh
 
-ifeq ($(USE_DOCKER),yes)
 test/security:
-	docker compose up -d db postgrest postgraphile >/dev/null
+	$(BACKEND_START_CMD)
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) jwt/dev >/dev/null
-	POSTGREST_URL=$(POSTGREST_BASE_URL) POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL) $(RBAC_TEST_SCRIPT)
-else
-test/security:
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
-	$(MAKE) db-wait >/dev/null
-	$(MAKE) jwt/dev >/dev/null
-	POSTGREST_URL=$(POSTGREST_BASE_URL) \
-	POSTGRAPHILE_URL=$(POSTGRAPHILE_GRAPHQL_URL) \
-	DB_HOST=$(DB_HOST) DB_PORT=$(DB_PORT) \
-	DB_APP_USER=$(DB_APP_USER) DB_APP_PASSWORD=$(DB_APP_PASSWORD) DB_NAME=$(DB_NAME) \
-	$(RBAC_TEST_SCRIPT)
-endif
+	$(SECURITY_TEST_ENV) $(RBAC_TEST_SCRIPT)
 
-ifeq ($(USE_DOCKER),yes)
 test/rest-story:
-	docker compose up -d db postgrest >/dev/null
+	$(BACKEND_START_CMD)
 	$(MAKE) db-wait >/dev/null
 	$(MAKE) jwt/dev >/dev/null
-	PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) \
-	POSTGREST_URL=$(POSTGREST_BASE_URL) \
-	$(REST_STORY_TEST_SCRIPT)
-else
-test/rest-story:
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
-	$(MAKE) db-wait >/dev/null
-	$(MAKE) jwt/dev >/dev/null
-	PGRST_JWT_SECRET=$(PGRST_JWT_SECRET) \
-	POSTGREST_URL=$(POSTGREST_BASE_URL) \
-	$(REST_STORY_TEST_SCRIPT)
-endif
+	$(REST_STORY_ENV) $(REST_STORY_TEST_SCRIPT)
 
-ifeq ($(USE_DOCKER),yes)
 db/test:
-	cat ops/db/tests/*.sql | $(PSQL_BATCH)
-else
-db/test:
-	$(LOCAL_DEV_HELPER) start >/dev/null 2>&1
+	$(DB_TEST_SETUP_CMD)
 	$(MAKE) db-wait >/dev/null
 	cat ops/db/tests/*.sql | $(PSQL_BATCH)
-endif
 
 rest:
 	@echo "GET /samples via PostgREST";
