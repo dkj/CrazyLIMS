@@ -149,15 +149,16 @@ db-wait:
 db/create:
 	$(DBMATE_ENV) $(DBMATE) create
 
+# Block new connections and terminate active ones so drop/reset doesn't fail when PostgREST/PostGraphile are running.
 db/terminate-connections:
 ifeq ($(USE_DOCKER),yes)
 	@if [ -n "$(shell docker compose ps -q db 2>/dev/null)" ]; then \
-		$(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"; \
+		$(PSQL_SUPER_CMD) -v ON_ERROR_STOP=1 -c "DO \$$\$$BEGIN IF EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(DB_NAME)') THEN EXECUTE format('ALTER DATABASE %I WITH ALLOW_CONNECTIONS = false', '$(DB_NAME)'); PERFORM pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$(DB_NAME)' AND pid <> pg_backend_pid(); END IF; END\$$\$$;"; \
 	else \
 		echo "db container not running; skipping terminate-connections"; \
 	fi
 else
-	$(PSQL_SUPER_CMD) -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DB_NAME)' AND pid <> pg_backend_pid();"
+	$(PSQL_SUPER_CMD) -v ON_ERROR_STOP=1 -c "DO \$$\$$BEGIN IF EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(DB_NAME)') THEN EXECUTE format('ALTER DATABASE %I WITH ALLOW_CONNECTIONS = false', '$(DB_NAME)'); PERFORM pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$(DB_NAME)' AND pid <> pg_backend_pid(); END IF; END\$$\$$;"
 endif
 
 db/drop: db/terminate-connections
